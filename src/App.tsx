@@ -1,20 +1,52 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Film, FolderOpen, Play, RefreshCw, Search, Server, Tv } from 'lucide-react';
+import { Film, FolderOpen, Layers3, List, Play, RefreshCw, Search, Server, Tv } from 'lucide-react';
 import type { MediaItem, ServerStatus } from './types';
 
 const fallbackStatus: ServerStatus = {
   running: false,
   localUrl: 'http://127.0.0.1:8765',
   itemCount: 0,
+  ffprobeAvailable: false,
 };
+
+type Section = 'movies' | 'tv';
+type TvView = 'season' | 'list';
+
+const episodeLabel = (item: MediaItem) => {
+  if (item.season == null || item.episode == null) return item.title;
+  const end = item.episodeEnd != null ? `-${String(item.episodeEnd).padStart(2, '0')}` : '';
+  return `S${String(item.season).padStart(2, '0')} E${String(item.episode).padStart(2, '0')}${end} · ${item.title}`;
+};
+
+function MediaCard({ item, onPlay }: { item: MediaItem; onPlay: (item: MediaItem) => void }) {
+  const displayTitle = item.kind === 'episode' ? item.showTitle ?? item.title : item.title;
+  const detail = item.kind === 'episode' ? episodeLabel(item) : item.year ?? 'Movie';
+  const progress = item.durationSeconds
+    ? Math.min(100, (item.progressSeconds / item.durationSeconds) * 100)
+    : 0;
+
+  return (
+    <article className="media-card" onClick={() => onPlay(item)}>
+      <div className="poster">
+        <div className="poster-letter">{displayTitle.charAt(0)}</div>
+        <span className={`mode-badge ${item.playbackMode}`}>{item.playbackMode === 'directPlay' ? 'Direct' : item.playbackMode}</span>
+        <button aria-label={`Play ${item.title}`}><Play fill="currentColor" size={21} /></button>
+        {progress > 0 && <div className="progress"><span style={{ width: `${progress}%` }} /></div>}
+      </div>
+      <h3>{displayTitle}</h3>
+      <p>{detail}</p>
+    </article>
+  );
+}
 
 function App() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [status, setStatus] = useState<ServerStatus>(fallbackStatus);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'movie' | 'episode'>('all');
+  const [section, setSection] = useState<Section>('movies');
+  const [tvView, setTvView] = useState<TvView>('season');
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -33,18 +65,35 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    void refresh();
-  }, []);
+  useEffect(() => { void refresh(); }, []);
 
-  const visibleItems = useMemo(() => {
+  const movies = useMemo(() => items.filter((item) => item.kind === 'movie'), [items]);
+  const episodes = useMemo(() => items
+    .filter((item) => item.kind === 'episode')
+    .sort((a, b) => (a.showTitle ?? '').localeCompare(b.showTitle ?? '') || (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0)), [items]);
+
+  const searchFilter = (item: MediaItem) => {
     const normalized = query.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesFilter = filter === 'all' || item.kind === filter;
-      const haystack = `${item.title} ${item.showTitle ?? ''}`.toLowerCase();
-      return matchesFilter && (!normalized || haystack.includes(normalized));
+    if (!normalized) return true;
+    return `${item.title} ${item.showTitle ?? ''} ${item.year ?? ''}`.toLowerCase().includes(normalized);
+  };
+
+  const visibleMovies = useMemo(() => movies.filter(searchFilter), [movies, query]);
+  const visibleEpisodes = useMemo(() => episodes.filter(searchFilter), [episodes, query]);
+
+  const seasonGroups = useMemo(() => {
+    const groups = new Map<string, MediaItem[]>();
+    for (const item of visibleEpisodes) {
+      const key = `${item.showTitle ?? 'TV'}|||${item.season ?? 0}`;
+      const group = groups.get(key) ?? [];
+      group.push(item);
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([key, group]) => {
+      const [showTitle, season] = key.split('|||');
+      return { key, showTitle, season: Number(season), items: group };
     });
-  }, [items, query, filter]);
+  }, [visibleEpisodes]);
 
   const chooseLibrary = async () => {
     const selectedPath = await open({ directory: true, multiple: false });
@@ -66,8 +115,6 @@ function App() {
     }
   };
 
-  const openPlayer = (item: MediaItem) => setSelected(item);
-
   const saveProgress = async () => {
     if (!selected || !videoRef.current) return;
     const current = Math.floor(videoRef.current.currentTime);
@@ -75,7 +122,7 @@ function App() {
       await invoke('save_progress', { id: selected.id, seconds: current });
       setItems((existing) => existing.map((item) => item.id === selected.id ? { ...item, progressSeconds: current } : item));
     } catch {
-      // Playback should not be interrupted if progress persistence fails.
+      // Never interrupt playback because progress persistence failed.
     }
   };
 
@@ -83,63 +130,73 @@ function App() {
     const video = videoRef.current;
     if (!selected || !video) return;
     const resume = () => {
-      if (selected.progressSeconds > 5 && video.currentTime < 1) {
-        video.currentTime = selected.progressSeconds;
-      }
+      if (selected.progressSeconds > 5 && video.currentTime < 1) video.currentTime = selected.progressSeconds;
     };
     video.addEventListener('loadedmetadata', resume);
     return () => video.removeEventListener('loadedmetadata', resume);
   }, [selected]);
 
+  const playableSubtitles = selected?.subtitles.filter((subtitle) => subtitle.url) ?? [];
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">H</span><span>Home Media</span></div>
-        <div className="search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your library" /></div>
+        <div className="search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${section === 'movies' ? 'movies' : 'TV'}`} /></div>
         <div className={`server-pill ${status.running ? 'online' : ''}`}><Server size={16} />{status.running ? status.localUrl : 'Server offline'}</div>
       </header>
 
       <aside className="sidebar">
-        <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}><Film size={19} />All</button>
-        <button className={filter === 'movie' ? 'active' : ''} onClick={() => setFilter('movie')}><Film size={19} />Movies</button>
-        <button className={filter === 'episode' ? 'active' : ''} onClick={() => setFilter('episode')}><Tv size={19} />TV Shows</button>
+        <button className={section === 'movies' ? 'active' : ''} onClick={() => setSection('movies')}><Film size={19} />Movies</button>
+        <button className={section === 'tv' ? 'active' : ''} onClick={() => setSection('tv')}><Tv size={19} />TV</button>
         <div className="sidebar-spacer" />
         <button onClick={chooseLibrary}><FolderOpen size={19} />Choose folder</button>
         <button onClick={rescan}><RefreshCw size={19} />Rescan</button>
       </aside>
 
       <main className="content">
-        <section className="hero">
+        <section className="hero compact-hero">
           <div>
-            <p className="eyebrow">YOUR COLLECTION</p>
-            <h1>Movies and television.<br />Nothing in the way.</h1>
-            <p>{status.libraryPath ? `${status.itemCount} titles from ${status.libraryPath}` : 'Choose a media folder to begin.'}</p>
+            <p className="eyebrow">{section === 'movies' ? 'MOVIES' : 'TELEVISION'}</p>
+            <h1>{section === 'movies' ? 'Your movies.' : 'Your shows.'}</h1>
+            <p>{status.libraryPath ? `${movies.length} movies · ${episodes.length} episodes` : 'Choose a media folder to begin.'}</p>
+            {!status.ffprobeAvailable && status.libraryPath && <p className="probe-note">FFprobe not detected — playback still works, but codec, duration and embedded-subtitle inspection is unavailable.</p>}
           </div>
+          {section === 'tv' && (
+            <div className="view-toggle" aria-label="TV layout">
+              <button className={tvView === 'season' ? 'active' : ''} onClick={() => setTvView('season')}><Layers3 size={17} />By season</button>
+              <button className={tvView === 'list' ? 'active' : ''} onClick={() => setTvView('list')}><List size={17} />All episodes</button>
+            </div>
+          )}
         </section>
 
         {error && <div className="error-banner">{error}</div>}
 
-        {visibleItems.length === 0 ? (
-          <section className="empty-state">
-            <Film size={42} />
-            <h2>No media found</h2>
-            <p>Choose a folder containing MP4, MKV, WebM, M4V, AVI or MOV files. Names such as <code>Show Name S01E02.mkv</code> are recognized as episodes.</p>
-            <button className="primary" onClick={chooseLibrary}><FolderOpen size={18} />Choose media folder</button>
-          </section>
-        ) : (
-          <section className="gallery">
-            {visibleItems.map((item) => (
-              <article className="media-card" key={item.id} onClick={() => openPlayer(item)}>
-                <div className="poster">
-                  <div className="poster-letter">{(item.showTitle ?? item.title).charAt(0)}</div>
-                  <button aria-label={`Play ${item.title}`}><Play fill="currentColor" size={21} /></button>
-                  {item.progressSeconds > 0 && <div className="progress"><span style={{ width: `${Math.min(100, ((item.progressSeconds / (item.durationSeconds || 5400)) * 100))}%` }} /></div>}
-                </div>
-                <h3>{item.kind === 'episode' ? item.showTitle : item.title}</h3>
-                <p>{item.kind === 'episode' ? `S${String(item.season).padStart(2, '0')} E${String(item.episode).padStart(2, '0')} · ${item.title}` : item.year ?? 'Movie'}</p>
-              </article>
-            ))}
-          </section>
+        {section === 'movies' && (
+          visibleMovies.length === 0 ? <EmptyState onChoose={chooseLibrary} label="movies" /> :
+          <section className="gallery">{visibleMovies.map((item) => <MediaCard key={item.id} item={item} onPlay={setSelected} />)}</section>
+        )}
+
+        {section === 'tv' && tvView === 'list' && (
+          visibleEpisodes.length === 0 ? <EmptyState onChoose={chooseLibrary} label="TV episodes" /> :
+          <section className="episode-list">{visibleEpisodes.map((item) => (
+            <button key={item.id} className="episode-row" onClick={() => setSelected(item)}>
+              <span className="episode-show">{item.showTitle ?? 'TV'}</span>
+              <span className="episode-number">{item.season == null ? '—' : `S${String(item.season).padStart(2, '0')}E${String(item.episode ?? 0).padStart(2, '0')}`}</span>
+              <span className="episode-title">{item.title}</span>
+              <Play size={17} />
+            </button>
+          ))}</section>
+        )}
+
+        {section === 'tv' && tvView === 'season' && (
+          seasonGroups.length === 0 ? <EmptyState onChoose={chooseLibrary} label="TV episodes" /> :
+          <div className="season-groups">{seasonGroups.map((group) => (
+            <section className="season-section" key={group.key}>
+              <div className="season-heading"><div><p>{group.showTitle}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`}</h2></div><span>{group.items.length} episodes</span></div>
+              <div className="gallery">{group.items.map((item) => <MediaCard key={item.id} item={item} onPlay={setSelected} />)}</div>
+            </section>
+          ))}</div>
         )}
       </main>
 
@@ -147,18 +204,24 @@ function App() {
         <div className="player-overlay" onClick={() => { void saveProgress(); setSelected(null); }}>
           <div className="player-panel" onClick={(event) => event.stopPropagation()}>
             <div className="player-heading">
-              <div><p>{selected.kind === 'episode' ? selected.showTitle : 'MOVIE'}</p><h2>{selected.title}</h2></div>
+              <div><p>{selected.kind === 'episode' ? `${selected.showTitle} · ${episodeLabel(selected)}` : 'MOVIE'}</p><h2>{selected.title}</h2><span className="media-tech">{[selected.container, selected.videoCodec, selected.audioCodec, selected.height ? `${selected.height}p` : null].filter(Boolean).join(' · ')}</span></div>
               <button onClick={() => { void saveProgress(); setSelected(null); }}>Close</button>
             </div>
+            {selected.playbackMode !== 'directPlay' && <div className="playback-warning">This file is classified for {selected.playbackMode}. Automatic FFmpeg remux/transcoding is the next playback milestone; the browser will still attempt direct playback.</div>}
             <video ref={videoRef} controls autoPlay onPause={saveProgress} onTimeUpdate={(event) => { if (Math.floor(event.currentTarget.currentTime) % 15 === 0) void saveProgress(); }}>
               <source src={selected.streamUrl} />
-              {selected.subtitles.map((subtitle) => <track key={subtitle.url} kind="subtitles" src={subtitle.url} srcLang={subtitle.language} label={subtitle.label} />)}
+              {playableSubtitles.map((subtitle) => <track key={subtitle.url} kind="subtitles" src={subtitle.url} srcLang={subtitle.language} label={subtitle.label} default={subtitle.default} />)}
             </video>
+            {selected.subtitles.some((subtitle) => subtitle.embedded) && <div className="embedded-note">Embedded subtitles detected: {selected.subtitles.filter((subtitle) => subtitle.embedded).map((subtitle) => subtitle.label).join(', ')}. Extraction will be added with FFmpeg playback support.</div>}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function EmptyState({ onChoose, label }: { onChoose: () => void; label: string }) {
+  return <section className="empty-state"><Film size={42} /><h2>No {label} found</h2><p>Choose a media folder or rescan after adding files.</p><button className="primary" onClick={onChoose}><FolderOpen size={18} />Choose media folder</button></section>;
 }
 
 export default App;

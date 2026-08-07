@@ -1,9 +1,15 @@
 export type MediaKind = 'movie' | 'episode';
+export type PlaybackMode = 'directPlay' | 'remux' | 'transcode';
 
 export interface SubtitleTrack {
   label: string;
   language: string;
-  url: string;
+  url?: string;
+  streamIndex?: number;
+  embedded: boolean;
+  format?: string;
+  forced: boolean;
+  default: boolean;
 }
 
 export interface MediaItem {
@@ -14,11 +20,18 @@ export interface MediaItem {
   showTitle?: string;
   season?: number;
   episode?: number;
+  episodeEnd?: number;
   path: string;
   streamUrl: string;
   subtitles: SubtitleTrack[];
   progressSeconds: number;
   durationSeconds?: number;
+  container?: string;
+  videoCodec?: string;
+  audioCodec?: string;
+  width?: number;
+  height?: number;
+  playbackMode: PlaybackMode;
 }
 
 export interface ServerStatus {
@@ -26,4 +39,5 @@ export interface ServerStatus {
   localUrl: string;
   libraryPath?: string;
   itemCount: number;
+  ffprobeAvailable: boolean;
 }

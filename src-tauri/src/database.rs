@@ -53,7 +53,7 @@ pub fn replace_library(path: &Path, items: &[MediaItem]) -> Result<(), String> {
         ).map_err(|e| e.to_string())?;
         for item in items {
             let json = serde_json::to_string(item).map_err(|e| e.to_string())?;
-            stmt.execute(params![item.id, item.path, item.kind, item.show_title, item.season, item.episode, json]).map_err(|e| e.to_string())?;
+            stmt.execute(params![&item.id, &item.path, &item.kind, item.show_title.as_deref(), item.season, item.episode, json]).map_err(|e| e.to_string())?;
         }
     }
     tx.commit().map_err(|e| e.to_string())

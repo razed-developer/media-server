@@ -8,7 +8,7 @@ mod probe;
 mod server;
 
 use app_state::{app_data_dir, load_settings, AppState};
-use std::sync::{Arc, RwLock};
+use std::{collections::HashMap, sync::{Arc, RwLock}};
 use tauri::{path::BaseDirectory, Manager};
 
 pub use app_state::Shared;
@@ -30,6 +30,7 @@ pub fn run() {
         database_path,
         settings: Arc::new(RwLock::new(load_settings(&settings_path))),
         media: Arc::new(RwLock::new(initial_media)),
+        sessions: Arc::new(RwLock::new(HashMap::new())),
     });
 
     tauri::Builder::default()
@@ -54,6 +55,8 @@ pub fn run() {
             commands::set_library_path,
             commands::set_movie_path,
             commands::set_tv_path,
+            commands::set_access_password,
+            commands::clear_access_password,
             commands::scan_library,
             commands::list_media,
             commands::save_progress,

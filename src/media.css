@@ -21,10 +21,14 @@
 .media-tech { color: #858d98; font-size: .78rem; text-transform: uppercase; }
 .playback-warning, .embedded-note { padding: 10px 20px; border-top: 1px solid #333943; background: #1a1710; color: #e6ca81; font-size: .82rem; }
 .embedded-note { border-top: 0; background: #15181d; color: #9fa6b0; }
+.browser-mode { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: #777f8b; font-size: .78rem; }
+.browser-mode svg { color: #d2ff45; }
 @media (max-width: 850px) {
   .compact-hero { align-items: end; }
   .view-toggle { padding-bottom: 42px; }
   .view-toggle button { font-size: 0; }
   .episode-row { grid-template-columns: 1fr 74px 24px; }
   .episode-title { display: none; }
+  .browser-mode span { display: none; }
+  .browser-mode { justify-content: center; }
 }

@@ -65,7 +65,7 @@ fn external_subtitles(path: &Path, id: &str) -> Vec<SubtitleTrack> {
     tracks
 }
 
-pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaItem>, String> {
+pub fn scan(root: &Path, database_path: &Path, kind_hint: Option<&str>) -> Result<Vec<MediaItem>, String> {
     let progress = database::progress_map(database_path).unwrap_or_default();
     let mut media = vec![];
 
@@ -75,7 +75,11 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
         if !VIDEO_EXTENSIONS.contains(&extension.as_str()) { continue; }
 
         let id = make_id(path);
-        let parsed = naming::parse(path);
+        let parsed = match kind_hint {
+            Some("movie") => naming::parse_movie(path),
+            Some("episode") => naming::parse_tv(path),
+            _ => naming::parse(path),
+        };
         let info = probe::inspect(path);
         let playback_mode = probe::playback_mode(
             info.container.as_deref(),
@@ -125,6 +129,5 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
         a_key.cmp(&b_key)
     });
 
-    database::replace_library(database_path, &media)?;
     Ok(media)
 }

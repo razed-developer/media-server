@@ -85,3 +85,52 @@ pub fn parse(path: &Path) -> ParsedName {
         ..Default::default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+    use std::path::Path;
+
+    #[test]
+    fn parses_standard_episode() {
+        let parsed = parse(Path::new("The.Show.S02E07.Episode.Title.mkv"));
+        assert_eq!(parsed.kind, "episode");
+        assert_eq!(parsed.show_title.as_deref(), Some("The Show"));
+        assert_eq!(parsed.season, Some(2));
+        assert_eq!(parsed.episode, Some(7));
+        assert_eq!(parsed.title, "Episode Title");
+    }
+
+    #[test]
+    fn parses_x_episode() {
+        let parsed = parse(Path::new("The Show - 3x12 - Finale.mp4"));
+        assert_eq!(parsed.show_title.as_deref(), Some("The Show"));
+        assert_eq!(parsed.season, Some(3));
+        assert_eq!(parsed.episode, Some(12));
+        assert_eq!(parsed.title, "Finale");
+    }
+
+    #[test]
+    fn parses_multi_episode() {
+        let parsed = parse(Path::new("Show.S01E05-E06.Double.Feature.mkv"));
+        assert_eq!(parsed.episode, Some(5));
+        assert_eq!(parsed.episode_end, Some(6));
+        assert_eq!(parsed.title, "Double Feature");
+    }
+
+    #[test]
+    fn parses_movie_year() {
+        let parsed = parse(Path::new("A.Movie.Title.2024.1080p.mkv"));
+        assert_eq!(parsed.kind, "movie");
+        assert_eq!(parsed.year, Some(2024));
+        assert!(parsed.title.starts_with("A Movie Title"));
+    }
+
+    #[test]
+    fn parses_date_episode() {
+        let parsed = parse(Path::new("Daily Show 2026-08-18 Headline.mkv"));
+        assert_eq!(parsed.kind, "episode");
+        assert_eq!(parsed.show_title.as_deref(), Some("Daily Show"));
+        assert_eq!(parsed.title, "Headline");
+    }
+}

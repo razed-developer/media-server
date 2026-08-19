@@ -63,6 +63,7 @@ function App() {
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastProgressSaveRef = useRef(0);
 
   const refresh = async () => {
     try {
@@ -127,9 +128,11 @@ function App() {
     }
   };
 
-  const saveProgress = async () => {
+  const saveProgress = async (force = false) => {
     if (!selected || !videoRef.current) return;
     const current = Math.floor(videoRef.current.currentTime);
+    if (!force && Math.abs(current - lastProgressSaveRef.current) < 15) return;
+    lastProgressSaveRef.current = current;
     try {
       await persistProgress(selected.id, current);
       setItems((existing) => existing.map((item) => item.id === selected.id ? { ...item, progressSeconds: current } : item));
@@ -141,6 +144,7 @@ function App() {
   useEffect(() => {
     const video = videoRef.current;
     if (!selected || !video) return;
+    lastProgressSaveRef.current = selected.progressSeconds;
     const resume = () => {
       if (selected.progressSeconds > 5 && video.currentTime < 1) video.currentTime = selected.progressSeconds;
     };
@@ -225,15 +229,15 @@ function App() {
       </main>
 
       {selected && (
-        <div className="player-overlay" onClick={() => { void saveProgress(); setSelected(null); }}>
+        <div className="player-overlay" onClick={() => { void saveProgress(true); setSelected(null); }}>
           <div className="player-panel" onClick={(event) => event.stopPropagation()}>
             <div className="player-heading">
               <div><p>{selected.kind === 'episode' ? `${selected.showTitle} · ${episodeLabel(selected)}` : 'MOVIE'}</p><h2>{selected.title}</h2><span className="media-tech">{[selected.container, selected.videoCodec, selected.audioCodec, selected.height ? `${selected.height}p` : null].filter(Boolean).join(' · ')}</span></div>
-              <button onClick={() => { void saveProgress(); setSelected(null); }}>Close</button>
+              <button onClick={() => { void saveProgress(true); setSelected(null); }}>Close</button>
             </div>
             {selected.playbackMode !== 'directPlay' && status.ffmpegAvailable && <div className="playback-warning">FFmpeg {selected.playbackMode === 'remux' ? 'remux' : 'transcoding'} is active for this file.</div>}
             {needsFfmpeg && !status.ffmpegAvailable && <div className="playback-warning">This file needs FFmpeg for compatible playback or embedded subtitles. Install FFmpeg on the server and restart Home Media.</div>}
-            <video ref={videoRef} controls autoPlay onPause={saveProgress} onTimeUpdate={(event) => { if (Math.floor(event.currentTarget.currentTime) % 15 === 0) void saveProgress(); }}>
+            <video ref={videoRef} controls autoPlay onPause={() => { void saveProgress(true); }} onTimeUpdate={() => { void saveProgress(); }}>
               <source src={resolveMediaUrl(selected.streamUrl)} />
               {playableSubtitles.map((subtitle) => <track key={subtitle.url} kind="subtitles" src={resolveMediaUrl(subtitle.url)} srcLang={subtitle.language} label={subtitle.label} default={subtitle.default} />)}
             </video>

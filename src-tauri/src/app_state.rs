@@ -1,6 +1,6 @@
 use crate::models::MediaItem;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::{Path, PathBuf}, sync::{Arc, RwLock}};
+use std::{collections::HashMap, fs, path::{Path, PathBuf}, sync::{Arc, RwLock}};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
@@ -10,6 +10,8 @@ pub struct Settings {
     pub movie_path: Option<String>,
     #[serde(default)]
     pub tv_path: Option<String>,
+    #[serde(default)]
+    pub access_password_hash: Option<String>,
 }
 
 #[derive(Clone)]
@@ -18,6 +20,7 @@ pub struct AppState {
     pub database_path: PathBuf,
     pub settings: Arc<RwLock<Settings>>,
     pub media: Arc<RwLock<Vec<MediaItem>>>,
+    pub sessions: Arc<RwLock<HashMap<String, u64>>>,
 }
 
 pub type Shared = Arc<AppState>;

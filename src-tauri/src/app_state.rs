@@ -4,7 +4,12 @@ use std::{fs, path::{Path, PathBuf}, sync::{Arc, RwLock}};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
+    #[serde(default)]
     pub library_path: Option<String>,
+    #[serde(default)]
+    pub movie_path: Option<String>,
+    #[serde(default)]
+    pub tv_path: Option<String>,
 }
 
 #[derive(Clone)]

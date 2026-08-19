@@ -40,4 +40,5 @@ export interface ServerStatus {
   libraryPath?: string;
   itemCount: number;
   ffprobeAvailable: boolean;
+  ffmpegAvailable: boolean;
 }

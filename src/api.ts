@@ -26,7 +26,12 @@ export async function getServerStatus(): Promise<ServerStatus> {
   if (isTauriDesktop()) return invoke<ServerStatus>('server_status');
   const response = await fetch(`${serverBaseUrl()}/api/status`);
   if (!response.ok) throw new Error(`Could not reach media server (${response.status})`);
-  const status = await response.json() as { running: boolean; itemCount: number; ffprobeAvailable: boolean };
+  const status = await response.json() as {
+    running: boolean;
+    itemCount: number;
+    ffprobeAvailable: boolean;
+    ffmpegAvailable: boolean;
+  };
   return {
     ...status,
     localUrl: serverBaseUrl() || window.location.origin,

@@ -52,6 +52,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::set_library_path,
+            commands::set_movie_path,
+            commands::set_tv_path,
             commands::scan_library,
             commands::list_media,
             commands::save_progress,

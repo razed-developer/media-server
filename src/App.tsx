@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { Film, FolderOpen, KeyRound, Layers3, List, LogOut, Play, RefreshCw, Search, Server, Tv } from 'lucide-react';
 import {
   chooseLibraryPath,

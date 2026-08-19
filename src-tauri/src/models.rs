@@ -28,6 +28,10 @@ pub struct MediaItem {
     pub stream_url: String,
     #[serde(default)]
     pub poster_url: Option<String>,
+    #[serde(default)]
+    pub backdrop_url: Option<String>,
+    #[serde(default)]
+    pub thumbnail_url: Option<String>,
     pub subtitles: Vec<SubtitleTrack>,
     pub progress_seconds: u64,
     pub duration_seconds: Option<u64>,

@@ -11,6 +11,15 @@ pub struct ServerStatus {
     library_path: Option<String>,
     item_count: usize,
     ffprobe_available: bool,
+    ffmpeg_available: bool,
+}
+
+fn command_available(name: &str) -> bool {
+    std::process::Command::new(name)
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
@@ -57,6 +66,12 @@ pub fn save_progress(id: String, seconds: u64, state: TauriState<'_, Shared>) ->
 pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, String> {
     let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
     let item_count = state.media.read().map_err(|_| "Media lock poisoned")?.len();
-    let ffprobe_available = std::process::Command::new("ffprobe").arg("-version").output().map(|o| o.status.success()).unwrap_or(false);
-    Ok(ServerStatus { running: true, local_url: format!("http://127.0.0.1:{PORT}"), library_path: settings.library_path.clone(), item_count, ffprobe_available })
+    Ok(ServerStatus {
+        running: true,
+        local_url: format!("http://127.0.0.1:{PORT}"),
+        library_path: settings.library_path.clone(),
+        item_count,
+        ffprobe_available: command_available("ffprobe"),
+        ffmpeg_available: command_available("ffmpeg"),
+    })
 }

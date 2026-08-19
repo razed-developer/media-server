@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Film, FolderOpen, Layers3, List, Play, RefreshCw, Search, Server, Tv } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Film, FolderOpen, KeyRound, Layers3, List, LogOut, Play, RefreshCw, Search, Server, Tv } from 'lucide-react';
 import {
   chooseLibraryPath,
+  clearAccessPassword,
+  getAuthStatus,
   getServerStatus,
   isTauriDesktop,
   listMedia,
+  login,
+  logout,
   rescanLibrary,
   resolveMediaUrl,
   saveProgress as persistProgress,
+  setAccessPassword,
   setMoviePath,
   setTvPath,
 } from './api';
@@ -33,9 +38,7 @@ const episodeLabel = (item: MediaItem) => {
 function MediaCard({ item, onPlay }: { item: MediaItem; onPlay: (item: MediaItem) => void }) {
   const displayTitle = item.kind === 'episode' ? item.showTitle ?? item.title : item.title;
   const detail = item.kind === 'episode' ? episodeLabel(item) : item.year ?? 'Movie';
-  const progress = item.durationSeconds
-    ? Math.min(100, (item.progressSeconds / item.durationSeconds) * 100)
-    : 0;
+  const progress = item.durationSeconds ? Math.min(100, (item.progressSeconds / item.durationSeconds) * 100) : 0;
 
   return (
     <article className="media-card" onClick={() => onPlay(item)}>
@@ -62,6 +65,10 @@ function App() {
   const [tvView, setTvView] = useState<TvView>('season');
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(isDesktop);
+  const [authenticated, setAuthenticated] = useState(isDesktop);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastProgressSaveRef = useRef(0);
 
@@ -76,7 +83,24 @@ function App() {
     }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    const bootstrap = async () => {
+      if (isDesktop) {
+        await refresh();
+        return;
+      }
+      try {
+        const auth = await getAuthStatus();
+        setAuthenticated(auth.authenticated);
+        setAuthChecked(true);
+        if (auth.authenticated) await refresh();
+      } catch (cause) {
+        setAuthChecked(true);
+        setError(String(cause));
+      }
+    };
+    void bootstrap();
+  }, []);
 
   const movies = useMemo(() => items.filter((item) => item.kind === 'movie'), [items]);
   const episodes = useMemo(() => items
@@ -91,7 +115,6 @@ function App() {
 
   const visibleMovies = useMemo(() => movies.filter(searchFilter), [movies, query]);
   const visibleEpisodes = useMemo(() => episodes.filter(searchFilter), [episodes, query]);
-
   const seasonGroups = useMemo(() => {
     const groups = new Map<string, MediaItem[]>();
     for (const item of visibleEpisodes) {
@@ -106,6 +129,22 @@ function App() {
     });
   }, [visibleEpisodes]);
 
+  const submitLogin = async (event: FormEvent) => {
+    event.preventDefault();
+    setLoginBusy(true);
+    setError(null);
+    try {
+      await login(loginPassword);
+      setAuthenticated(true);
+      setLoginPassword('');
+      await refresh();
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
   const chooseMediaFolder = async (kind: Section) => {
     if (!isDesktop) return;
     const selectedPath = await chooseLibraryPath();
@@ -117,6 +156,35 @@ function App() {
     } catch (cause) {
       setError(String(cause));
     }
+  };
+
+  const configurePassword = async () => {
+    if (!isDesktop) return;
+    if (status.accessPasswordSet) {
+      const action = window.confirm('Browser access is password protected. Click OK to remove the password, or Cancel to keep it.');
+      if (!action) return;
+      try {
+        await clearAccessPassword();
+        await refresh();
+      } catch (cause) {
+        setError(String(cause));
+      }
+      return;
+    }
+    const password = window.prompt('Set a browser access password (minimum 8 characters):');
+    if (!password) return;
+    try {
+      await setAccessPassword(password);
+      await refresh();
+    } catch (cause) {
+      setError(String(cause));
+    }
+  };
+
+  const signOut = async () => {
+    await logout();
+    setAuthenticated(false);
+    setItems([]);
   };
 
   const rescan = async () => {
@@ -152,6 +220,26 @@ function App() {
     return () => video.removeEventListener('loadedmetadata', resume);
   }, [selected]);
 
+  if (!authChecked) {
+    return <div className="login-shell"><div className="login-card"><div className="brand-mark">H</div><h1>Home Media</h1><p>Connecting to your media server…</p></div></div>;
+  }
+
+  if (!isDesktop && !authenticated) {
+    return (
+      <div className="login-shell">
+        <form className="login-card" onSubmit={submitLogin}>
+          <div className="brand-mark">H</div>
+          <p className="eyebrow">PRIVATE LIBRARY</p>
+          <h1>Home Media</h1>
+          <p>Enter the server access password.</p>
+          <input type="password" autoFocus autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder="Password" />
+          {error && <div className="login-error">{error}</div>}
+          <button className="primary" type="submit" disabled={loginBusy || !loginPassword}>{loginBusy ? 'Signing in…' : 'Sign in'}</button>
+        </form>
+      </div>
+    );
+  }
+
   const playableSubtitles = selected?.subtitles.filter((subtitle) => subtitle.url) ?? [];
   const hasLibrary = Boolean(status.moviePath || status.tvPath || status.libraryPath) || items.length > 0;
   const needsFfmpeg = selected?.playbackMode !== 'directPlay' || Boolean(selected?.subtitles.some((subtitle) => subtitle.embedded));
@@ -173,9 +261,13 @@ function App() {
             <button onClick={() => chooseMediaFolder('movies')}><FolderOpen size={19} />Movie folder</button>
             <button onClick={() => chooseMediaFolder('tv')}><FolderOpen size={19} />TV folder</button>
             <button onClick={rescan}><RefreshCw size={19} />Rescan</button>
+            <button onClick={configurePassword}><KeyRound size={19} />{status.accessPasswordSet ? 'Remove password' : 'Set access password'}</button>
           </>
         ) : (
-          <div className="browser-mode"><Server size={17} /><span>Browser client</span></div>
+          <>
+            <div className="browser-mode"><Server size={17} /><span>Browser client</span></div>
+            <button onClick={signOut}><LogOut size={19} />Sign out</button>
+          </>
         )}
       </aside>
 

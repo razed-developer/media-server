@@ -67,3 +67,13 @@ export async function setLibraryPath(path: string): Promise<void> {
   if (!isTauriDesktop()) throw new Error('Library folders are managed from the desktop server app.');
   await invoke('set_library_path', { path });
 }
+
+export async function setMoviePath(path: string): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('Movie folders are managed from the desktop server app.');
+  await invoke('set_movie_path', { path });
+}
+
+export async function setTvPath(path: string): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('TV folders are managed from the desktop server app.');
+  await invoke('set_tv_path', { path });
+}

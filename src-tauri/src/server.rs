@@ -1,10 +1,56 @@
-use crate::{models::MediaItem, Shared};
-use axum::{extract::{Path as AxumPath, State}, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}, routing::get, Json, Router};
-use std::{net::SocketAddr, path::Path};
-use tower_http::cors::CorsLayer;
+use crate::{database, models::MediaItem, Shared};
+use axum::{
+    extract::{Path as AxumPath, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{Html, IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+use std::{net::SocketAddr, path::{Path, PathBuf}};
+use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserStatus {
+    running: bool,
+    item_count: usize,
+    ffprobe_available: bool,
+}
+
+#[derive(Deserialize)]
+struct ProgressPayload {
+    seconds: u64,
+}
 
 pub async fn api_library(State(state): State<Shared>) -> Json<Vec<MediaItem>> {
     Json(state.media.read().map(|m| m.clone()).unwrap_or_default())
+}
+
+async fn api_status(State(state): State<Shared>) -> Json<BrowserStatus> {
+    let item_count = state.media.read().map(|m| m.len()).unwrap_or(0);
+    let ffprobe_available = std::process::Command::new("ffprobe")
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    Json(BrowserStatus { running: true, item_count, ffprobe_available })
+}
+
+async fn api_save_progress(
+    State(state): State<Shared>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<ProgressPayload>,
+) -> StatusCode {
+    if database::save_progress(&state.database_path, &id, payload.seconds).is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+    if let Ok(mut media) = state.media.write() {
+        if let Some(item) = media.iter_mut().find(|item| item.id == id) {
+            item.progress_seconds = payload.seconds;
+        }
+    }
+    StatusCode::NO_CONTENT
 }
 
 fn find_media(state: &crate::AppState, id: &str) -> Option<MediaItem> {
@@ -54,16 +100,34 @@ pub async fn subtitle(State(state): State<Shared>, AxumPath((id, filename)): Axu
     response
 }
 
-pub async fn start(state: Shared, port: u16) {
+async fn dev_browser_redirect() -> Html<&'static str> {
+    Html(r#"<!doctype html><meta charset=\"utf-8\"><title>Home Media</title><script>location.replace('http://'+location.hostname+':1420'+location.pathname+location.search+location.hash)</script><p>Opening Home Media…</p>"#)
+}
+
+pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
     let router = Router::new()
         .route("/api/library", get(api_library))
+        .route("/api/status", get(api_status))
+        .route("/api/progress/{id}", post(api_save_progress))
         .route("/stream/{id}", get(stream_media))
         .route("/subtitle/{id}/{filename}", get(subtitle))
         .layer(CorsLayer::permissive())
         .with_state(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    let router = if let Some(root) = web_root.filter(|path| path.join("index.html").is_file()) {
+        router.fallback_service(
+            ServeDir::new(&root)
+                .append_index_html_on_directories(true)
+                .not_found_service(ServeFile::new(root.join("index.html")))
+        )
+    } else {
+        router.fallback(dev_browser_redirect)
+    };
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => {
+            println!("Home Media browser server listening on http://0.0.0.0:{port}");
             if let Err(error) = axum::serve(listener, router).await { eprintln!("Media server stopped: {error}"); }
         }
         Err(error) => eprintln!("Could not start media server on {addr}: {error}"),

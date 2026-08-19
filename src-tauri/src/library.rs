@@ -52,11 +52,16 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
         let id = make_id(path);
         let parsed = naming::parse(path);
         let info = probe::inspect(path);
+        let playback_mode = probe::playback_mode(
+            info.container.as_deref(),
+            info.video_codec.as_deref(),
+            info.audio_codec.as_deref(),
+        );
         let mut subtitles = external_subtitles(path, &id);
         subtitles.extend(info.subtitles.iter().map(|track| SubtitleTrack {
             label: track.title.clone().unwrap_or_else(|| track.language.to_uppercase()),
             language: track.language.clone(),
-            url: None,
+            url: Some(format!("/subtitle/{id}/embedded/{}", track.index)),
             stream_index: Some(track.index),
             embedded: true,
             format: track.codec.clone(),
@@ -74,7 +79,7 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
             episode: parsed.episode,
             episode_end: parsed.episode_end,
             path: path.to_string_lossy().to_string(),
-            stream_url: format!("/stream/{id}"),
+            stream_url: format!("/play/{id}"),
             subtitles,
             progress_seconds: *progress.get(&id).unwrap_or(&0),
             duration_seconds: info.duration_seconds,
@@ -83,7 +88,7 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
             audio_codec: info.audio_codec.clone(),
             width: info.width,
             height: info.height,
-            playback_mode: probe::playback_mode(info.container.as_deref(), info.video_codec.as_deref(), info.audio_codec.as_deref()),
+            playback_mode,
         });
     }
 

@@ -7,6 +7,10 @@ on:
       - main
       - agent/**
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-build:
     runs-on: windows-latest

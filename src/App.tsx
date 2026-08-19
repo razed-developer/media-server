@@ -8,7 +8,8 @@ import {
   rescanLibrary,
   resolveMediaUrl,
   saveProgress as persistProgress,
-  setLibraryPath,
+  setMoviePath,
+  setTvPath,
 } from './api';
 import type { MediaItem, ServerStatus } from './types';
 
@@ -104,12 +105,13 @@ function App() {
     });
   }, [visibleEpisodes]);
 
-  const chooseLibrary = async () => {
+  const chooseMediaFolder = async (kind: Section) => {
     if (!isDesktop) return;
     const selectedPath = await chooseLibraryPath();
     if (!selectedPath) return;
     try {
-      await setLibraryPath(selectedPath);
+      if (kind === 'movies') await setMoviePath(selectedPath);
+      else await setTvPath(selectedPath);
       await refresh();
     } catch (cause) {
       setError(String(cause));
@@ -147,7 +149,7 @@ function App() {
   }, [selected]);
 
   const playableSubtitles = selected?.subtitles.filter((subtitle) => subtitle.url) ?? [];
-  const hasLibrary = Boolean(status.libraryPath) || items.length > 0;
+  const hasLibrary = Boolean(status.moviePath || status.tvPath || status.libraryPath) || items.length > 0;
   const needsFfmpeg = selected?.playbackMode !== 'directPlay' || Boolean(selected?.subtitles.some((subtitle) => subtitle.embedded));
 
   return (
@@ -164,7 +166,8 @@ function App() {
         <div className="sidebar-spacer" />
         {isDesktop ? (
           <>
-            <button onClick={chooseLibrary}><FolderOpen size={19} />Choose folder</button>
+            <button onClick={() => chooseMediaFolder('movies')}><FolderOpen size={19} />Movie folder</button>
+            <button onClick={() => chooseMediaFolder('tv')}><FolderOpen size={19} />TV folder</button>
             <button onClick={rescan}><RefreshCw size={19} />Rescan</button>
           </>
         ) : (
@@ -177,7 +180,9 @@ function App() {
           <div>
             <p className="eyebrow">{section === 'movies' ? 'MOVIES' : 'TELEVISION'}</p>
             <h1>{section === 'movies' ? 'Your movies.' : 'Your shows.'}</h1>
-            <p>{hasLibrary ? `${movies.length} movies · ${episodes.length} episodes` : isDesktop ? 'Choose a media folder to begin.' : 'The server library is empty.'}</p>
+            <p>{hasLibrary ? `${movies.length} movies · ${episodes.length} episodes` : isDesktop ? 'Choose your Movies and TV folders to begin.' : 'The server library is empty.'}</p>
+            {isDesktop && section === 'movies' && status.moviePath && <p className="library-path">{status.moviePath}</p>}
+            {isDesktop && section === 'tv' && status.tvPath && <p className="library-path">{status.tvPath}</p>}
             {!status.ffprobeAvailable && hasLibrary && <p className="probe-note">FFprobe not detected — file identification still works, but codec, duration and embedded-subtitle inspection is unavailable.</p>}
             {!status.ffmpegAvailable && items.some((item) => item.playbackMode !== 'directPlay' || item.subtitles.some((subtitle) => subtitle.embedded)) && <p className="probe-note">FFmpeg not detected — some files and embedded subtitles will not play until FFmpeg is installed.</p>}
           </div>
@@ -192,12 +197,12 @@ function App() {
         {error && <div className="error-banner">{error}</div>}
 
         {section === 'movies' && (
-          visibleMovies.length === 0 ? <EmptyState onChoose={isDesktop ? chooseLibrary : undefined} label="movies" /> :
+          visibleMovies.length === 0 ? <EmptyState onChoose={isDesktop ? () => chooseMediaFolder('movies') : undefined} label="movies" /> :
           <section className="gallery">{visibleMovies.map((item) => <MediaCard key={item.id} item={item} onPlay={setSelected} />)}</section>
         )}
 
         {section === 'tv' && tvView === 'list' && (
-          visibleEpisodes.length === 0 ? <EmptyState onChoose={isDesktop ? chooseLibrary : undefined} label="TV episodes" /> :
+          visibleEpisodes.length === 0 ? <EmptyState onChoose={isDesktop ? () => chooseMediaFolder('tv') : undefined} label="TV episodes" /> :
           <section className="episode-list">{visibleEpisodes.map((item) => (
             <button key={item.id} className="episode-row" onClick={() => setSelected(item)}>
               <span className="episode-show">{item.showTitle ?? 'TV'}</span>
@@ -209,7 +214,7 @@ function App() {
         )}
 
         {section === 'tv' && tvView === 'season' && (
-          seasonGroups.length === 0 ? <EmptyState onChoose={isDesktop ? chooseLibrary : undefined} label="TV episodes" /> :
+          seasonGroups.length === 0 ? <EmptyState onChoose={isDesktop ? () => chooseMediaFolder('tv') : undefined} label="TV episodes" /> :
           <div className="season-groups">{seasonGroups.map((group) => (
             <section className="season-section" key={group.key}>
               <div className="season-heading"><div><p>{group.showTitle}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`}</h2></div><span>{group.items.length} episodes</span></div>

@@ -1,6 +1,6 @@
 use crate::{app_state::{persist_settings, Shared}, database, library, models::MediaItem, PORT};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::{net::UdpSocket, path::{Path, PathBuf}};
 use tauri::State as TauriState;
 
 #[derive(Serialize)]
@@ -22,6 +22,17 @@ fn command_available(name: &str) -> bool {
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
+}
+
+fn lan_url() -> String {
+    let ip = UdpSocket::bind("0.0.0.0:0")
+        .and_then(|socket| {
+            socket.connect("8.8.8.8:80")?;
+            socket.local_addr()
+        })
+        .map(|address| address.ip().to_string())
+        .unwrap_or_else(|_| "127.0.0.1".into());
+    format!("http://{ip}:{PORT}")
 }
 
 fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
@@ -119,7 +130,7 @@ pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, Stri
     let item_count = state.media.read().map_err(|_| "Media lock poisoned")?.len();
     Ok(ServerStatus {
         running: true,
-        local_url: format!("http://127.0.0.1:{PORT}"),
+        local_url: lan_url(),
         library_path: settings.library_path.clone(),
         movie_path: settings.movie_path.clone(),
         tv_path: settings.tv_path.clone(),

@@ -21,19 +21,14 @@ The desktop application manages the server. The same running instance also serve
 - Embedded subtitle discovery and on-demand WebVTT extraction through FFmpeg
 - Local poster artwork discovery
 - Browser access from other devices on the LAN
+- LAN browser address shown in the desktop app
 - Windows CI for the frontend, Rust/Tauri compile and Rust tests
 
 ## Browser access
 
 The media server listens on port `8765`.
 
-From another device on the same network, open:
-
-```text
-http://SERVER-IP:8765
-```
-
-For example:
+The desktop app displays the LAN address that another device should open. It will look similar to:
 
 ```text
 http://192.168.1.123:8765

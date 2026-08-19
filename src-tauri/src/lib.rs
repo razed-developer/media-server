@@ -9,7 +9,7 @@ mod server;
 
 use app_state::{app_data_dir, load_settings, AppState};
 use std::sync::{Arc, RwLock};
-use tauri::Manager;
+use tauri::{path::BaseDirectory, Manager};
 
 pub use app_state::Shared;
 pub const PORT: u16 = 8765;
@@ -37,7 +37,14 @@ pub fn run() {
         .manage(shared.clone())
         .setup(move |app| {
             let server_state = shared.clone();
-            tauri::async_runtime::spawn(async move { server::start(server_state, PORT).await; });
+            let web_root = if cfg!(debug_assertions) {
+                None
+            } else {
+                app.path().resolve("web", BaseDirectory::Resource).ok()
+            };
+            tauri::async_runtime::spawn(async move {
+                server::start(server_state, PORT, web_root).await;
+            });
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("Home Media");
             }

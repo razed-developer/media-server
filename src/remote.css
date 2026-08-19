@@ -1,0 +1,42 @@
+/* Remote / keyboard focus: intentionally stronger than mouse hover so it is
+   obvious on a television from across the room. */
+:where(button, a, input, select, textarea, video, .media-card):focus-visible {
+  outline: 3px solid #d2ff45;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 7px rgba(210, 255, 69, 0.18);
+}
+
+.media-card[role="button"] {
+  cursor: pointer;
+}
+
+.media-card[role="button"]:focus-visible {
+  transform: translateY(-3px) scale(1.015);
+  z-index: 4;
+}
+
+.episode-row:focus-visible,
+.sidebar button:focus-visible,
+.view-toggle button:focus-visible {
+  position: relative;
+  z-index: 5;
+}
+
+.player-panel video:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Keep focus transitions readable without making the UI feel animated. */
+.media-card,
+button,
+video {
+  transition: outline-color 100ms ease, box-shadow 100ms ease, transform 100ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-card,
+  button,
+  video {
+    transition: none;
+  }
+}

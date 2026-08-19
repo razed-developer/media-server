@@ -21,6 +21,7 @@ The desktop application manages the server. The same running instance also serve
 - Embedded subtitle discovery and on-demand WebVTT extraction through FFmpeg
 - Local poster artwork discovery
 - Browser access from other devices on the LAN
+- Optional password-protected browser access with Argon2 password hashing and HttpOnly sessions
 - LAN browser address shown in the desktop app
 - Windows CI for the frontend, Rust/Tauri compile and Rust tests
 
@@ -37,6 +38,14 @@ http://192.168.1.123:8765
 During `npm run tauri dev`, port 8765 redirects browser clients to the development Vite server on port 1420. Packaged builds serve the compiled React client directly from port 8765.
 
 Browser clients can browse, search, play media, use subtitles and save playback progress. Filesystem/library administration remains available only in the desktop Tauri application.
+
+### Browser access password
+
+From the desktop app, choose **Set access password**. Passwords must be at least 8 characters. Home Media stores only an Argon2 password hash.
+
+Remote browser clients then see a simple login screen. Successful logins receive a 30-day HttpOnly, SameSite=Lax session cookie. Changing or removing the access password invalidates all existing sessions.
+
+Connections coming from the local machine's loopback interface are exempt so the Tauri desktop player continues to work without logging into its own server.
 
 ## Library layout
 
@@ -106,16 +115,18 @@ npm run tauri build
 
 ## Security
 
-LAN browser access is currently unauthenticated. **Do not port-forward port 8765 directly to the public internet.**
+Password protection now prevents casual unauthenticated access to the library and media routes. The browser session cookie is HttpOnly and SameSite=Lax.
 
-Before public remote access, Home Media needs authentication and an HTTPS/Tailscale/reverse-proxy deployment path.
+**Do not port-forward port 8765 directly to the public internet.** The built-in server is still plain HTTP, so credentials and sessions need an HTTPS transport before this should be exposed beyond a trusted network.
+
+For outside-network access, use a private network such as Tailscale first, or place Home Media behind an authenticated HTTPS reverse proxy. Native HTTPS/domain configuration can be added later.
 
 ## Near-term roadmap
 
-- User accounts and authenticated browser sessions
-- Safer remote internet access
+- HTTPS/Tailscale/reverse-proxy remote-access setup
 - Better transcoding seek/resume through segmented playback
 - Optional metadata provider integration
 - Manual metadata correction
 - Automatic library watching/rescans
 - Additional poster/backdrop handling
+- Multiple named users/profiles if needed

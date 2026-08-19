@@ -1,4 +1,4 @@
-use crate::{database, models::MediaItem, Shared};
+use crate::{database, library, models::MediaItem, Shared};
 use axum::{
     body::Body,
     extract::{Path as AxumPath, State},
@@ -225,6 +225,22 @@ pub async fn stream_media(
     direct_stream(&item, &headers).await
 }
 
+pub async fn artwork(
+    State(state): State<Shared>,
+    AxumPath(id): AxumPath<String>,
+) -> Response {
+    let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); };
+    let Some(path) = library::find_poster(Path::new(&item.path)) else { return StatusCode::NOT_FOUND.into_response(); };
+    let Ok(bytes) = tokio::fs::read(&path).await else { return StatusCode::NOT_FOUND.into_response(); };
+    let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::CACHE_CONTROL, "private, max-age=3600")
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
 fn srt_to_vtt(raw: &str) -> String {
     let converted = raw
         .lines()
@@ -260,12 +276,14 @@ pub async fn embedded_subtitle(
     let allowed = item.subtitles.iter().any(|track| track.embedded && track.stream_index == Some(stream_index));
     if !allowed { return StatusCode::NOT_FOUND.into_response(); }
 
-    let output = Command::new("ffmpeg")
+    let mut command = Command::new("ffmpeg");
+    command
         .args(["-hide_banner", "-loglevel", "error", "-i"])
         .arg(&item.path)
-        .args(["-map", &format!("0:{stream_index}"), "-f", "webvtt", "pipe:1"])
-        .output()
-        .await;
+        .arg("-map")
+        .arg(format!("0:{stream_index}"))
+        .args(["-f", "webvtt", "pipe:1"]);
+    let output = command.output().await;
     let Ok(output) = output else {
         return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required to extract embedded subtitles.").into_response();
     };
@@ -290,6 +308,7 @@ pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
         .route("/api/progress/{id}", post(api_save_progress))
         .route("/play/{id}", get(play_media))
         .route("/stream/{id}", get(stream_media))
+        .route("/art/{id}/poster", get(artwork))
         .route("/subtitle/{id}/embedded/{stream_index}", get(embedded_subtitle))
         .route("/subtitle/{id}/{filename}", get(subtitle))
         .layer(CorsLayer::permissive())

@@ -333,3 +333,35 @@ pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
         Err(error) => eprintln!("Could not start media server on {addr}: {error}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_range;
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    fn range(value: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::RANGE, HeaderValue::from_str(value).unwrap());
+        headers
+    }
+
+    #[test]
+    fn parses_normal_range() {
+        assert_eq!(parse_range(&range("bytes=100-199"), 1000), Ok(Some((100, 199))));
+    }
+
+    #[test]
+    fn parses_open_ended_range() {
+        assert_eq!(parse_range(&range("bytes=900-"), 1000), Ok(Some((900, 999))));
+    }
+
+    #[test]
+    fn parses_suffix_range() {
+        assert_eq!(parse_range(&range("bytes=-100"), 1000), Ok(Some((900, 999))));
+    }
+
+    #[test]
+    fn rejects_range_past_end() {
+        assert!(parse_range(&range("bytes=1000-"), 1000).is_err());
+    }
+}

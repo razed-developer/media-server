@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build:web-resource",
     "frontendDist": "../dist"
   },
   "app": {
@@ -28,7 +28,7 @@
     "targets": "all",
     "icon": [],
     "resources": {
-      "../dist/": "web/"
+      "web/": "web/"
     }
   }
 }

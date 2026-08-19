@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
 import { Film, FolderOpen, Layers3, List, Play, RefreshCw, Search, Server, Tv } from 'lucide-react';
+import {
+  chooseLibraryPath,
+  getServerStatus,
+  isTauriDesktop,
+  listMedia,
+  rescanLibrary,
+  resolveMediaUrl,
+  saveProgress as persistProgress,
+  setLibraryPath,
+} from './api';
 import type { MediaItem, ServerStatus } from './types';
 
 const fallbackStatus: ServerStatus = {
@@ -42,6 +50,7 @@ function MediaCard({ item, onPlay }: { item: MediaItem; onPlay: (item: MediaItem
 }
 
 function App() {
+  const isDesktop = isTauriDesktop();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [status, setStatus] = useState<ServerStatus>(fallbackStatus);
   const [query, setQuery] = useState('');
@@ -53,10 +62,7 @@ function App() {
 
   const refresh = async () => {
     try {
-      const [library, serverStatus] = await Promise.all([
-        invoke<MediaItem[]>('list_media'),
-        invoke<ServerStatus>('server_status'),
-      ]);
+      const [library, serverStatus] = await Promise.all([listMedia(), getServerStatus()]);
       setItems(library);
       setStatus(serverStatus);
       setError(null);
@@ -96,10 +102,11 @@ function App() {
   }, [visibleEpisodes]);
 
   const chooseLibrary = async () => {
-    const selectedPath = await open({ directory: true, multiple: false });
-    if (!selectedPath || Array.isArray(selectedPath)) return;
+    if (!isDesktop) return;
+    const selectedPath = await chooseLibraryPath();
+    if (!selectedPath) return;
     try {
-      await invoke('set_library_path', { path: selectedPath });
+      await setLibraryPath(selectedPath);
       await refresh();
     } catch (cause) {
       setError(String(cause));
@@ -108,7 +115,7 @@ function App() {
 
   const rescan = async () => {
     try {
-      await invoke('scan_library');
+      await rescanLibrary();
       await refresh();
     } catch (cause) {
       setError(String(cause));
@@ -119,7 +126,7 @@ function App() {
     if (!selected || !videoRef.current) return;
     const current = Math.floor(videoRef.current.currentTime);
     try {
-      await invoke('save_progress', { id: selected.id, seconds: current });
+      await persistProgress(selected.id, current);
       setItems((existing) => existing.map((item) => item.id === selected.id ? { ...item, progressSeconds: current } : item));
     } catch {
       // Never interrupt playback because progress persistence failed.
@@ -137,6 +144,7 @@ function App() {
   }, [selected]);
 
   const playableSubtitles = selected?.subtitles.filter((subtitle) => subtitle.url) ?? [];
+  const hasLibrary = Boolean(status.libraryPath) || items.length > 0;
 
   return (
     <div className="app-shell">
@@ -150,8 +158,14 @@ function App() {
         <button className={section === 'movies' ? 'active' : ''} onClick={() => setSection('movies')}><Film size={19} />Movies</button>
         <button className={section === 'tv' ? 'active' : ''} onClick={() => setSection('tv')}><Tv size={19} />TV</button>
         <div className="sidebar-spacer" />
-        <button onClick={chooseLibrary}><FolderOpen size={19} />Choose folder</button>
-        <button onClick={rescan}><RefreshCw size={19} />Rescan</button>
+        {isDesktop ? (
+          <>
+            <button onClick={chooseLibrary}><FolderOpen size={19} />Choose folder</button>
+            <button onClick={rescan}><RefreshCw size={19} />Rescan</button>
+          </>
+        ) : (
+          <div className="browser-mode"><Server size={17} /><span>Browser client</span></div>
+        )}
       </aside>
 
       <main className="content">
@@ -159,8 +173,8 @@ function App() {
           <div>
             <p className="eyebrow">{section === 'movies' ? 'MOVIES' : 'TELEVISION'}</p>
             <h1>{section === 'movies' ? 'Your movies.' : 'Your shows.'}</h1>
-            <p>{status.libraryPath ? `${movies.length} movies · ${episodes.length} episodes` : 'Choose a media folder to begin.'}</p>
-            {!status.ffprobeAvailable && status.libraryPath && <p className="probe-note">FFprobe not detected — playback still works, but codec, duration and embedded-subtitle inspection is unavailable.</p>}
+            <p>{hasLibrary ? `${movies.length} movies · ${episodes.length} episodes` : isDesktop ? 'Choose a media folder to begin.' : 'The server library is empty.'}</p>
+            {!status.ffprobeAvailable && hasLibrary && <p className="probe-note">FFprobe not detected — playback still works, but codec, duration and embedded-subtitle inspection is unavailable.</p>}
           </div>
           {section === 'tv' && (
             <div className="view-toggle" aria-label="TV layout">
@@ -173,12 +187,12 @@ function App() {
         {error && <div className="error-banner">{error}</div>}
 
         {section === 'movies' && (
-          visibleMovies.length === 0 ? <EmptyState onChoose={chooseLibrary} label="movies" /> :
+          visibleMovies.length === 0 ? <EmptyState onChoose={isDesktop ? chooseLibrary : undefined} label="movies" /> :
           <section className="gallery">{visibleMovies.map((item) => <MediaCard key={item.id} item={item} onPlay={setSelected} />)}</section>
         )}
 
         {section === 'tv' && tvView === 'list' && (
-          visibleEpisodes.length === 0 ? <EmptyState onChoose={chooseLibrary} label="TV episodes" /> :
+          visibleEpisodes.length === 0 ? <EmptyState onChoose={isDesktop ? chooseLibrary : undefined} label="TV episodes" /> :
           <section className="episode-list">{visibleEpisodes.map((item) => (
             <button key={item.id} className="episode-row" onClick={() => setSelected(item)}>
               <span className="episode-show">{item.showTitle ?? 'TV'}</span>
@@ -190,7 +204,7 @@ function App() {
         )}
 
         {section === 'tv' && tvView === 'season' && (
-          seasonGroups.length === 0 ? <EmptyState onChoose={chooseLibrary} label="TV episodes" /> :
+          seasonGroups.length === 0 ? <EmptyState onChoose={isDesktop ? chooseLibrary : undefined} label="TV episodes" /> :
           <div className="season-groups">{seasonGroups.map((group) => (
             <section className="season-section" key={group.key}>
               <div className="season-heading"><div><p>{group.showTitle}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`}</h2></div><span>{group.items.length} episodes</span></div>
@@ -209,8 +223,8 @@ function App() {
             </div>
             {selected.playbackMode !== 'directPlay' && <div className="playback-warning">This file is classified for {selected.playbackMode}. Automatic FFmpeg remux/transcoding is the next playback milestone; the browser will still attempt direct playback.</div>}
             <video ref={videoRef} controls autoPlay onPause={saveProgress} onTimeUpdate={(event) => { if (Math.floor(event.currentTarget.currentTime) % 15 === 0) void saveProgress(); }}>
-              <source src={selected.streamUrl} />
-              {playableSubtitles.map((subtitle) => <track key={subtitle.url} kind="subtitles" src={subtitle.url} srcLang={subtitle.language} label={subtitle.label} default={subtitle.default} />)}
+              <source src={resolveMediaUrl(selected.streamUrl)} />
+              {playableSubtitles.map((subtitle) => <track key={subtitle.url} kind="subtitles" src={resolveMediaUrl(subtitle.url)} srcLang={subtitle.language} label={subtitle.label} default={subtitle.default} />)}
             </video>
             {selected.subtitles.some((subtitle) => subtitle.embedded) && <div className="embedded-note">Embedded subtitles detected: {selected.subtitles.filter((subtitle) => subtitle.embedded).map((subtitle) => subtitle.label).join(', ')}. Extraction will be added with FFmpeg playback support.</div>}
           </div>
@@ -220,8 +234,8 @@ function App() {
   );
 }
 
-function EmptyState({ onChoose, label }: { onChoose: () => void; label: string }) {
-  return <section className="empty-state"><Film size={42} /><h2>No {label} found</h2><p>Choose a media folder or rescan after adding files.</p><button className="primary" onClick={onChoose}><FolderOpen size={18} />Choose media folder</button></section>;
+function EmptyState({ onChoose, label }: { onChoose?: () => void; label: string }) {
+  return <section className="empty-state"><Film size={42} /><h2>No {label} found</h2><p>{onChoose ? 'Choose a media folder or rescan after adding files.' : 'Add media using the Home Media desktop server, then reload this page.'}</p>{onChoose && <button className="primary" onClick={onChoose}><FolderOpen size={18} />Choose media folder</button>}</section>;
 }
 
 export default App;

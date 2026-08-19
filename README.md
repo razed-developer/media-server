@@ -115,15 +115,15 @@ npm run tauri build
 
 ## Security
 
-Password protection now prevents casual unauthenticated access to the library and media routes. The browser session cookie is HttpOnly and SameSite=Lax.
+Password protection prevents unauthenticated remote browser access to the library, media, artwork, subtitle and progress routes. The browser session cookie is HttpOnly and SameSite=Lax. The desktop app's loopback connection remains trusted locally.
 
-**Do not port-forward port 8765 directly to the public internet.** The built-in server is still plain HTTP, so credentials and sessions need an HTTPS transport before this should be exposed beyond a trusted network.
+**Do not port-forward port 8765 directly to the public internet.** The built-in server is still plain HTTP, so a password alone does not protect credentials and session cookies in transit.
 
-For outside-network access, use a private network such as Tailscale first, or place Home Media behind an authenticated HTTPS reverse proxy. Native HTTPS/domain configuration can be added later.
+For outside-network access today, use Home Media over a private encrypted network such as Tailscale. An HTTPS reverse-proxy deployment is also appropriate once configured securely. Native HTTPS/domain configuration can be added later.
 
 ## Near-term roadmap
 
-- HTTPS/Tailscale/reverse-proxy remote-access setup
+- Tailscale/HTTPS remote-access setup and documentation
 - Better transcoding seek/resume through segmented playback
 - Optional metadata provider integration
 - Manual metadata correction

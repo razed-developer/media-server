@@ -44,4 +44,10 @@ export interface ServerStatus {
   itemCount: number;
   ffprobeAvailable: boolean;
   ffmpegAvailable: boolean;
+  accessPasswordSet?: boolean;
+}
+
+export interface AuthStatus {
+  required: boolean;
+  authenticated: boolean;
 }

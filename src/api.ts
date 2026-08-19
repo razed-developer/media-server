@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { MediaItem, ServerStatus } from './types';
+import type { AuthStatus, MediaItem, ServerStatus } from './types';
 
 export const isTauriDesktop = () => Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
@@ -15,16 +15,40 @@ export const resolveMediaUrl = (url?: string | null) => {
   return `${serverBaseUrl()}${url.startsWith('/') ? url : `/${url}`}`;
 };
 
+const browserFetch = (input: string, init?: RequestInit) => fetch(input, { ...init, credentials: 'include' });
+
+export async function getAuthStatus(): Promise<AuthStatus> {
+  if (isTauriDesktop()) return { required: false, authenticated: true };
+  const response = await browserFetch(`${serverBaseUrl()}/api/auth/status`);
+  if (!response.ok) throw new Error(`Could not check authentication (${response.status})`);
+  return response.json();
+}
+
+export async function login(password: string): Promise<void> {
+  if (isTauriDesktop()) return;
+  const response = await browserFetch(`${serverBaseUrl()}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) throw new Error(response.status === 401 ? 'Incorrect password' : `Login failed (${response.status})`);
+}
+
+export async function logout(): Promise<void> {
+  if (isTauriDesktop()) return;
+  await browserFetch(`${serverBaseUrl()}/api/auth/logout`, { method: 'POST' });
+}
+
 export async function listMedia(): Promise<MediaItem[]> {
   if (isTauriDesktop()) return invoke<MediaItem[]>('list_media');
-  const response = await fetch(`${serverBaseUrl()}/api/library`);
+  const response = await browserFetch(`${serverBaseUrl()}/api/library`);
   if (!response.ok) throw new Error(`Could not load media library (${response.status})`);
   return response.json();
 }
 
 export async function getServerStatus(): Promise<ServerStatus> {
   if (isTauriDesktop()) return invoke<ServerStatus>('server_status');
-  const response = await fetch(`${serverBaseUrl()}/api/status`);
+  const response = await browserFetch(`${serverBaseUrl()}/api/status`);
   if (!response.ok) throw new Error(`Could not reach media server (${response.status})`);
   const status = await response.json() as {
     running: boolean;
@@ -43,7 +67,7 @@ export async function saveProgress(id: string, seconds: number): Promise<void> {
     await invoke('save_progress', { id, seconds });
     return;
   }
-  const response = await fetch(`${serverBaseUrl()}/api/progress/${encodeURIComponent(id)}`, {
+  const response = await browserFetch(`${serverBaseUrl()}/api/progress/${encodeURIComponent(id)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ seconds }),
@@ -76,4 +100,14 @@ export async function setMoviePath(path: string): Promise<void> {
 export async function setTvPath(path: string): Promise<void> {
   if (!isTauriDesktop()) throw new Error('TV folders are managed from the desktop server app.');
   await invoke('set_tv_path', { path });
+}
+
+export async function setAccessPassword(password: string): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('Access passwords are managed from the desktop server app.');
+  await invoke('set_access_password', { password });
+}
+
+export async function clearAccessPassword(): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('Access passwords are managed from the desktop server app.');
+  await invoke('clear_access_password');
 }

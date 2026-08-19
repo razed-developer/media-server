@@ -17,6 +17,7 @@ const fallbackStatus: ServerStatus = {
   localUrl: 'http://127.0.0.1:8765',
   itemCount: 0,
   ffprobeAvailable: false,
+  ffmpegAvailable: false,
 };
 
 type Section = 'movies' | 'tv';
@@ -145,6 +146,7 @@ function App() {
 
   const playableSubtitles = selected?.subtitles.filter((subtitle) => subtitle.url) ?? [];
   const hasLibrary = Boolean(status.libraryPath) || items.length > 0;
+  const needsFfmpeg = selected?.playbackMode !== 'directPlay' || Boolean(selected?.subtitles.some((subtitle) => subtitle.embedded));
 
   return (
     <div className="app-shell">
@@ -174,7 +176,8 @@ function App() {
             <p className="eyebrow">{section === 'movies' ? 'MOVIES' : 'TELEVISION'}</p>
             <h1>{section === 'movies' ? 'Your movies.' : 'Your shows.'}</h1>
             <p>{hasLibrary ? `${movies.length} movies · ${episodes.length} episodes` : isDesktop ? 'Choose a media folder to begin.' : 'The server library is empty.'}</p>
-            {!status.ffprobeAvailable && hasLibrary && <p className="probe-note">FFprobe not detected — playback still works, but codec, duration and embedded-subtitle inspection is unavailable.</p>}
+            {!status.ffprobeAvailable && hasLibrary && <p className="probe-note">FFprobe not detected — file identification still works, but codec, duration and embedded-subtitle inspection is unavailable.</p>}
+            {!status.ffmpegAvailable && items.some((item) => item.playbackMode !== 'directPlay' || item.subtitles.some((subtitle) => subtitle.embedded)) && <p className="probe-note">FFmpeg not detected — some files and embedded subtitles will not play until FFmpeg is installed.</p>}
           </div>
           {section === 'tv' && (
             <div className="view-toggle" aria-label="TV layout">
@@ -221,12 +224,13 @@ function App() {
               <div><p>{selected.kind === 'episode' ? `${selected.showTitle} · ${episodeLabel(selected)}` : 'MOVIE'}</p><h2>{selected.title}</h2><span className="media-tech">{[selected.container, selected.videoCodec, selected.audioCodec, selected.height ? `${selected.height}p` : null].filter(Boolean).join(' · ')}</span></div>
               <button onClick={() => { void saveProgress(); setSelected(null); }}>Close</button>
             </div>
-            {selected.playbackMode !== 'directPlay' && <div className="playback-warning">This file is classified for {selected.playbackMode}. Automatic FFmpeg remux/transcoding is the next playback milestone; the browser will still attempt direct playback.</div>}
+            {selected.playbackMode !== 'directPlay' && status.ffmpegAvailable && <div className="playback-warning">FFmpeg {selected.playbackMode === 'remux' ? 'remux' : 'transcoding'} is active for this file.</div>}
+            {needsFfmpeg && !status.ffmpegAvailable && <div className="playback-warning">This file needs FFmpeg for compatible playback or embedded subtitles. Install FFmpeg on the server and restart Home Media.</div>}
             <video ref={videoRef} controls autoPlay onPause={saveProgress} onTimeUpdate={(event) => { if (Math.floor(event.currentTarget.currentTime) % 15 === 0) void saveProgress(); }}>
               <source src={resolveMediaUrl(selected.streamUrl)} />
               {playableSubtitles.map((subtitle) => <track key={subtitle.url} kind="subtitles" src={resolveMediaUrl(subtitle.url)} srcLang={subtitle.language} label={subtitle.label} default={subtitle.default} />)}
             </video>
-            {selected.subtitles.some((subtitle) => subtitle.embedded) && <div className="embedded-note">Embedded subtitles detected: {selected.subtitles.filter((subtitle) => subtitle.embedded).map((subtitle) => subtitle.label).join(', ')}. Extraction will be added with FFmpeg playback support.</div>}
+            {selected.subtitles.some((subtitle) => subtitle.embedded) && status.ffmpegAvailable && <div className="embedded-note">Embedded subtitles available: {selected.subtitles.filter((subtitle) => subtitle.embedded).map((subtitle) => subtitle.label).join(', ')}.</div>}
           </div>
         </div>
       )}

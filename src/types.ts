@@ -39,6 +39,8 @@ export interface ServerStatus {
   running: boolean;
   localUrl: string;
   libraryPath?: string;
+  moviePath?: string;
+  tvPath?: string;
   itemCount: number;
   ffprobeAvailable: boolean;
   ffmpegAvailable: boolean;

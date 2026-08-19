@@ -1,8 +1,13 @@
 use crate::{database, library, models::MediaItem, Shared};
+use argon2::{
+    password_hash::{PasswordHash, PasswordVerifier},
+    Argon2,
+};
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, State},
+    extract::{ConnectInfo, Path as AxumPath, Request, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -13,6 +18,7 @@ use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     process::Stdio,
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{
     fs::File,
@@ -21,9 +27,13 @@ use tokio::{
 };
 use tokio_util::io::ReaderStream;
 use tower_http::{
-    cors::CorsLayer,
+    cors::{AllowOrigin, Any, CorsLayer},
     services::{ServeDir, ServeFile},
 };
+use uuid::Uuid;
+
+const SESSION_COOKIE: &str = "home_media_session";
+const SESSION_SECONDS: u64 = 60 * 60 * 24 * 30;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,9 +44,125 @@ struct BrowserStatus {
     ffmpeg_available: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthStatus {
+    required: bool,
+    authenticated: bool,
+}
+
 #[derive(Deserialize)]
 struct ProgressPayload {
     seconds: u64,
+}
+
+#[derive(Deserialize)]
+struct LoginPayload {
+    password: String,
+}
+
+fn now_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn cookie_token(headers: &HeaderMap) -> Option<String> {
+    let raw = headers.get(header::COOKIE)?.to_str().ok()?;
+    raw.split(';')
+        .map(str::trim)
+        .find_map(|part| part.strip_prefix(&format!("{SESSION_COOKIE}=")).map(str::to_string))
+}
+
+fn password_required(state: &crate::AppState) -> bool {
+    state.settings.read().ok().and_then(|settings| settings.access_password_hash.clone()).is_some()
+}
+
+fn valid_session(state: &crate::AppState, headers: &HeaderMap) -> bool {
+    let Some(token) = cookie_token(headers) else { return false; };
+    let now = now_seconds();
+    let Ok(mut sessions) = state.sessions.write() else { return false; };
+    sessions.retain(|_, expires| *expires > now);
+    sessions.get(&token).is_some_and(|expires| *expires > now)
+}
+
+async fn require_auth(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if peer.ip().is_loopback() || !password_required(&state) || valid_session(&state, request.headers()) {
+        return next.run(request).await;
+    }
+    StatusCode::UNAUTHORIZED.into_response()
+}
+
+async fn auth_status(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Json<AuthStatus> {
+    let required = password_required(&state) && !peer.ip().is_loopback();
+    let authenticated = !required || valid_session(&state, &headers);
+    Json(AuthStatus { required, authenticated })
+}
+
+async fn login(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(payload): Json<LoginPayload>,
+) -> Response {
+    if peer.ip().is_loopback() || !password_required(&state) {
+        return StatusCode::NO_CONTENT.into_response();
+    }
+
+    let password_hash = state
+        .settings
+        .read()
+        .ok()
+        .and_then(|settings| settings.access_password_hash.clone());
+    let Some(password_hash) = password_hash else {
+        return StatusCode::NO_CONTENT.into_response();
+    };
+    let Ok(parsed_hash) = PasswordHash::new(&password_hash) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    if Argon2::default().verify_password(payload.password.as_bytes(), &parsed_hash).is_err() {
+        return (StatusCode::UNAUTHORIZED, "Incorrect password").into_response();
+    }
+
+    let token = Uuid::new_v4().to_string();
+    let expires = now_seconds() + SESSION_SECONDS;
+    if state.sessions.write().map(|mut sessions| sessions.insert(token.clone(), expires)).is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .header(
+            header::SET_COOKIE,
+            format!("{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_SECONDS}"),
+        )
+        .body(Body::empty())
+        .unwrap()
+}
+
+async fn logout(State(state): State<Shared>, headers: HeaderMap) -> Response {
+    if let Some(token) = cookie_token(&headers) {
+        if let Ok(mut sessions) = state.sessions.write() {
+            sessions.remove(&token);
+        }
+    }
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .header(
+            header::SET_COOKIE,
+            format!("{SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"),
+        )
+        .body(Body::empty())
+        .unwrap()
 }
 
 pub async fn api_library(State(state): State<Shared>) -> Json<Vec<MediaItem>> {
@@ -302,16 +428,29 @@ async fn dev_browser_redirect() -> Html<&'static str> {
 }
 
 pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
-    let router = Router::new()
+    let protected = Router::new()
         .route("/api/library", get(api_library))
-        .route("/api/status", get(api_status))
         .route("/api/progress/{id}", post(api_save_progress))
         .route("/play/{id}", get(play_media))
         .route("/stream/{id}", get(stream_media))
         .route("/art/{id}/poster", get(artwork))
         .route("/subtitle/{id}/embedded/{stream_index}", get(embedded_subtitle))
         .route("/subtitle/{id}/{filename}", get(subtitle))
-        .layer(CorsLayer::permissive())
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    let router = Router::new()
+        .route("/api/status", get(api_status))
+        .route("/api/auth/status", get(auth_status))
+        .route("/api/auth/login", post(login))
+        .route("/api/auth/logout", post(logout))
+        .merge(protected)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::mirror_request())
+                .allow_methods(Any)
+                .allow_headers(Any)
+                .allow_credentials(true),
+        )
         .with_state(state);
 
     let router = if let Some(root) = web_root.filter(|path| path.join("index.html").is_file()) {
@@ -328,7 +467,9 @@ pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
     match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => {
             println!("Home Media browser server listening on http://0.0.0.0:{port}");
-            if let Err(error) = axum::serve(listener, router).await { eprintln!("Media server stopped: {error}"); }
+            if let Err(error) = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>()).await {
+                eprintln!("Media server stopped: {error}");
+            }
         }
         Err(error) => eprintln!("Could not start media server on {addr}: {error}"),
     }

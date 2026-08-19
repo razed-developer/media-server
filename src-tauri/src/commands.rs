@@ -1,7 +1,12 @@
 use crate::{app_state::{persist_settings, Shared}, database, library, models::MediaItem, PORT};
+use argon2::{
+    password_hash::{PasswordHasher, SaltString},
+    Argon2,
+};
 use serde::Serialize;
 use std::{net::UdpSocket, path::{Path, PathBuf}};
 use tauri::State as TauriState;
+use uuid::Uuid;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +19,7 @@ pub struct ServerStatus {
     item_count: usize,
     ffprobe_available: bool,
     ffmpeg_available: bool,
+    access_password_set: bool,
 }
 
 fn command_available(name: &str) -> bool {
@@ -33,6 +39,14 @@ fn lan_url() -> String {
         .map(|address| address.ip().to_string())
         .unwrap_or_else(|_| "127.0.0.1".into());
     format!("http://{ip}:{PORT}")
+}
+
+fn hash_password(password: &str) -> Result<String, String> {
+    let salt = SaltString::encode_b64(Uuid::new_v4().as_bytes()).map_err(|e| e.to_string())?;
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|e| e.to_string())
 }
 
 fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
@@ -108,6 +122,24 @@ pub fn set_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), St
 }
 
 #[tauri::command]
+pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> Result<(), String> {
+    if password.chars().count() < 8 {
+        return Err("Access password must be at least 8 characters".into());
+    }
+    let hash = hash_password(&password)?;
+    state.settings.write().map_err(|_| "Settings lock poisoned")?.access_password_hash = Some(hash);
+    state.sessions.write().map_err(|_| "Session lock poisoned")?.clear();
+    persist_settings(&state)
+}
+
+#[tauri::command]
+pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String> {
+    state.settings.write().map_err(|_| "Settings lock poisoned")?.access_password_hash = None;
+    state.sessions.write().map_err(|_| "Session lock poisoned")?.clear();
+    persist_settings(&state)
+}
+
+#[tauri::command]
 pub fn scan_library(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> { scan(&state) }
 
 #[tauri::command]
@@ -137,5 +169,6 @@ pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, Stri
         item_count,
         ffprobe_available: command_available("ffprobe"),
         ffmpeg_available: command_available("ffmpeg"),
+        access_password_set: settings.access_password_hash.is_some(),
     })
 }

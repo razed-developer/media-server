@@ -31,7 +31,14 @@ function prepareElement(element: HTMLElement) {
 function focusables(): HTMLElement[] {
   const elements = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
   elements.forEach(prepareElement);
-  return elements.filter(isVisible);
+  return elements.filter((element) => {
+    if (!isVisible(element)) return false;
+    const card = element.closest<HTMLElement>(CARD_SELECTOR);
+    // The whole media card is the remote target; don't make its nested play
+    // icon a second stop for the same action.
+    if (card && card !== element) return false;
+    return true;
+  });
 }
 
 function center(rect: DOMRect) {
@@ -69,8 +76,6 @@ function directionalScore(from: HTMLElement, to: HTMLElement, direction: Directi
       break;
   }
 
-  // Prefer the nearest element in the requested direction while heavily
-  // favouring candidates aligned with the current row/column.
   return primary + secondary * 2.75;
 }
 
@@ -131,46 +136,53 @@ function closeTopLayer(): boolean {
   return false;
 }
 
-function handleVideoRemote(event: KeyboardEvent, video: HTMLVideoElement): boolean {
+function selectFocused() {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) active.click();
+}
+
+function controlVideo(action: 'toggle' | 'left' | 'right' | 'up' | 'down'): boolean {
+  const video = activeVideo();
+  if (!video) return false;
   const active = document.activeElement;
   if (active !== video && (active instanceof HTMLButtonElement || isTextControl(active))) return false;
 
-  switch (event.key) {
-    case 'Enter':
-    case ' ':
-    case 'MediaPlayPause':
-      if (video.paused) void video.play();
-      else video.pause();
-      return true;
-    case 'ArrowLeft':
-      video.currentTime = Math.max(0, video.currentTime - 10);
-      return true;
-    case 'ArrowRight':
-      video.currentTime = Math.min(Number.isFinite(video.duration) ? video.duration : video.currentTime + 10, video.currentTime + 10);
-      return true;
-    case 'ArrowUp':
-      video.volume = Math.min(1, video.volume + 0.1);
-      return true;
-    case 'ArrowDown':
-      video.volume = Math.max(0, video.volume - 0.1);
-      return true;
-    default:
-      return false;
+  if (action === 'toggle') {
+    if (video.paused) void video.play();
+    else video.pause();
+  } else if (action === 'left') {
+    video.currentTime = Math.max(0, video.currentTime - 10);
+  } else if (action === 'right') {
+    video.currentTime = Math.min(Number.isFinite(video.duration) ? video.duration : video.currentTime + 10, video.currentTime + 10);
+  } else if (action === 'up') {
+    video.volume = Math.min(1, video.volume + 0.1);
+  } else if (action === 'down') {
+    video.volume = Math.max(0, video.volume - 0.1);
   }
+  return true;
+}
+
+function handleVideoRemote(event: KeyboardEvent): boolean {
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'MediaPlayPause' || event.key === 'Select') return controlVideo('toggle');
+  if (event.key === 'ArrowLeft') return controlVideo('left');
+  if (event.key === 'ArrowRight') return controlVideo('right');
+  if (event.key === 'ArrowUp') return controlVideo('up');
+  if (event.key === 'ArrowDown') return controlVideo('down');
+  return false;
 }
 
 function normalizeDirection(key: string): Direction | null {
-  if (key === 'ArrowUp') return 'up';
-  if (key === 'ArrowDown') return 'down';
-  if (key === 'ArrowLeft') return 'left';
-  if (key === 'ArrowRight') return 'right';
+  if (key === 'ArrowUp' || key === 'Up') return 'up';
+  if (key === 'ArrowDown' || key === 'Down') return 'down';
+  if (key === 'ArrowLeft' || key === 'Left') return 'left';
+  if (key === 'ArrowRight' || key === 'Right') return 'right';
   return null;
 }
 
 function onKeyDown(event: KeyboardEvent) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
 
-  if (['Escape', 'BrowserBack', 'GoBack'].includes(event.key) || (event.key === 'Backspace' && !isTextControl(document.activeElement))) {
+  if (['Escape', 'BrowserBack', 'GoBack', 'Back'].includes(event.key) || (event.key === 'Backspace' && !isTextControl(document.activeElement))) {
     if (closeTopLayer()) {
       event.preventDefault();
       event.stopPropagation();
@@ -178,8 +190,7 @@ function onKeyDown(event: KeyboardEvent) {
     return;
   }
 
-  const video = activeVideo();
-  if (video && handleVideoRemote(event, video)) {
+  if (activeVideo() && handleVideoRemote(event)) {
     event.preventDefault();
     event.stopPropagation();
     return;
@@ -193,7 +204,7 @@ function onKeyDown(event: KeyboardEvent) {
     return;
   }
 
-  if ((event.key === 'Enter' || event.key === ' ') && active instanceof HTMLElement && active.matches(CARD_SELECTOR)) {
+  if (['Enter', ' ', 'Select', 'Accept'].includes(event.key) && active instanceof HTMLElement && active.matches(CARD_SELECTOR)) {
     event.preventDefault();
     active.click();
   }
@@ -203,9 +214,68 @@ function refreshFocusableElements(root: ParentNode = document) {
   root.querySelectorAll<HTMLElement>(`${CARD_SELECTOR}, video`).forEach(prepareElement);
 }
 
+function pressed(button: GamepadButton | undefined): boolean {
+  return Boolean(button?.pressed || (button?.value ?? 0) > 0.5);
+}
+
+function installGamepadNavigation() {
+  if (!('getGamepads' in navigator)) return () => {};
+
+  let frame = 0;
+  let lastActionAt = 0;
+  let previousSelect = false;
+  let previousBack = false;
+  const repeatMs = 180;
+
+  const tick = (now: number) => {
+    const gamepads = navigator.getGamepads?.() ?? [];
+    const pad = Array.from(gamepads).find(Boolean);
+    if (pad) {
+      const up = pressed(pad.buttons[12]) || (pad.axes[1] ?? 0) < -0.65;
+      const down = pressed(pad.buttons[13]) || (pad.axes[1] ?? 0) > 0.65;
+      const left = pressed(pad.buttons[14]) || (pad.axes[0] ?? 0) < -0.65;
+      const right = pressed(pad.buttons[15]) || (pad.axes[0] ?? 0) > 0.65;
+      const select = pressed(pad.buttons[0]);
+      const back = pressed(pad.buttons[1]) || pressed(pad.buttons[8]);
+
+      if (now - lastActionAt >= repeatMs) {
+        const video = activeVideo();
+        if (up) {
+          if (!(video && controlVideo('up'))) moveFocus('up');
+          lastActionAt = now;
+        } else if (down) {
+          if (!(video && controlVideo('down'))) moveFocus('down');
+          lastActionAt = now;
+        } else if (left) {
+          if (!(video && controlVideo('left'))) moveFocus('left');
+          lastActionAt = now;
+        } else if (right) {
+          if (!(video && controlVideo('right'))) moveFocus('right');
+          lastActionAt = now;
+        }
+      }
+
+      if (select && !previousSelect) {
+        if (!(activeVideo() && controlVideo('toggle'))) selectFocused();
+      }
+      if (back && !previousBack) closeTopLayer();
+      previousSelect = select;
+      previousBack = back;
+    } else {
+      previousSelect = false;
+      previousBack = false;
+    }
+    frame = requestAnimationFrame(tick);
+  };
+
+  frame = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(frame);
+}
+
 export function installRemoteNavigation() {
   refreshFocusableElements();
   document.addEventListener('keydown', onKeyDown, true);
+  const stopGamepad = installGamepadNavigation();
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
@@ -214,7 +284,6 @@ export function installRemoteNavigation() {
         if (node.matches(`${CARD_SELECTOR}, video`)) prepareElement(node);
         refreshFocusableElements(node);
 
-        // When a player opens, put remote focus directly on the video.
         const video = node.matches('.player-overlay')
           ? node.querySelector<HTMLVideoElement>('video')
           : node.querySelector<HTMLVideoElement>('.player-overlay video');
@@ -227,6 +296,7 @@ export function installRemoteNavigation() {
 
   return () => {
     observer.disconnect();
+    stopGamepad();
     document.removeEventListener('keydown', onKeyDown, true);
   };
 }

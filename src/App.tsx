@@ -39,7 +39,9 @@ function MediaCard({ item, onPlay }: { item: MediaItem; onPlay: (item: MediaItem
   return (
     <article className="media-card" onClick={() => onPlay(item)}>
       <div className="poster">
-        <div className="poster-letter">{displayTitle.charAt(0)}</div>
+        {item.posterUrl
+          ? <img className="poster-image" src={resolveMediaUrl(item.posterUrl)} alt="" loading="lazy" />
+          : <div className="poster-letter">{displayTitle.charAt(0)}</div>}
         <span className={`mode-badge ${item.playbackMode}`}>{item.playbackMode === 'directPlay' ? 'Direct' : item.playbackMode}</span>
         <button aria-label={`Play ${item.title}`}><Play fill="currentColor" size={21} /></button>
         {progress > 0 && <div className="progress"><span style={{ width: `${progress}%` }} /></div>}

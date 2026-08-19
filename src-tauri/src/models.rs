@@ -26,6 +26,8 @@ pub struct MediaItem {
     pub episode_end: Option<u16>,
     pub path: String,
     pub stream_url: String,
+    #[serde(default)]
+    pub poster_url: Option<String>,
     pub subtitles: Vec<SubtitleTrack>,
     pub progress_seconds: u64,
     pub duration_seconds: Option<u64>,

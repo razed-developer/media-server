@@ -1,14 +1,39 @@
 use crate::{database, models::{MediaItem, SubtitleTrack}, naming, probe};
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path};
+use std::{fs, path::{Path, PathBuf}};
 use walkdir::WalkDir;
 
 const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "mkv", "webm", "m4v", "avi", "mov"];
+const IMAGE_EXTENSIONS: [&str; 3] = ["jpg", "png", "webp"];
 
 fn make_id(path: &Path) -> String {
     let mut hasher = Sha256::new();
     hasher.update(path.to_string_lossy().as_bytes());
     hex::encode(hasher.finalize())[..20].to_string()
+}
+
+pub fn find_poster(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+    let mut candidates = Vec::new();
+
+    for extension in IMAGE_EXTENSIONS {
+        candidates.push(parent.join(format!("{stem}.{extension}")));
+    }
+    for name in ["poster", "folder", "cover"] {
+        for extension in IMAGE_EXTENSIONS {
+            candidates.push(parent.join(format!("{name}.{extension}")));
+        }
+    }
+    if let Some(show_root) = parent.parent() {
+        for name in ["poster", "folder", "cover"] {
+            for extension in IMAGE_EXTENSIONS {
+                candidates.push(show_root.join(format!("{name}.{extension}")));
+            }
+        }
+    }
+
+    candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
 fn external_subtitles(path: &Path, id: &str) -> Vec<SubtitleTrack> {
@@ -68,6 +93,7 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
             forced: track.forced,
             default: track.default,
         }));
+        let poster_url = find_poster(path).map(|_| format!("/art/{id}/poster"));
 
         media.push(MediaItem {
             id: id.clone(),
@@ -80,6 +106,7 @@ pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaIt
             episode_end: parsed.episode_end,
             path: path.to_string_lossy().to_string(),
             stream_url: format!("/play/{id}"),
+            poster_url,
             subtitles,
             progress_seconds: *progress.get(&id).unwrap_or(&0),
             duration_seconds: info.duration_seconds,

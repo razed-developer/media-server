@@ -11,7 +11,7 @@ fn make_id(path: &Path) -> String {
     hex::encode(hasher.finalize())[..20].to_string()
 }
 
-fn external_subtitles(path: &Path, id: &str, port: u16) -> Vec<SubtitleTrack> {
+fn external_subtitles(path: &Path, id: &str) -> Vec<SubtitleTrack> {
     let Some(parent) = path.parent() else { return vec![]; };
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
     let mut tracks = vec![];
@@ -28,7 +28,7 @@ fn external_subtitles(path: &Path, id: &str, port: u16) -> Vec<SubtitleTrack> {
             tracks.push(SubtitleTrack {
                 label: if language.is_empty() { "Subtitles".into() } else { language.to_uppercase() },
                 language: if language.is_empty() { "und".into() } else { language },
-                url: Some(format!("http://127.0.0.1:{port}/subtitle/{id}/{}", urlencoding::encode(filename))),
+                url: Some(format!("/subtitle/{id}/{}", urlencoding::encode(filename))),
                 stream_index: None,
                 embedded: false,
                 format: Some(extension),
@@ -40,7 +40,7 @@ fn external_subtitles(path: &Path, id: &str, port: u16) -> Vec<SubtitleTrack> {
     tracks
 }
 
-pub fn scan(root: &Path, database_path: &Path, port: u16) -> Result<Vec<MediaItem>, String> {
+pub fn scan(root: &Path, database_path: &Path, _port: u16) -> Result<Vec<MediaItem>, String> {
     let progress = database::progress_map(database_path).unwrap_or_default();
     let mut media = vec![];
 
@@ -52,7 +52,7 @@ pub fn scan(root: &Path, database_path: &Path, port: u16) -> Result<Vec<MediaIte
         let id = make_id(path);
         let parsed = naming::parse(path);
         let info = probe::inspect(path);
-        let mut subtitles = external_subtitles(path, &id, port);
+        let mut subtitles = external_subtitles(path, &id);
         subtitles.extend(info.subtitles.iter().map(|track| SubtitleTrack {
             label: track.title.clone().unwrap_or_else(|| track.language.to_uppercase()),
             language: track.language.clone(),
@@ -74,7 +74,7 @@ pub fn scan(root: &Path, database_path: &Path, port: u16) -> Result<Vec<MediaIte
             episode: parsed.episode,
             episode_end: parsed.episode_end,
             path: path.to_string_lossy().to_string(),
-            stream_url: format!("http://127.0.0.1:{port}/stream/{id}"),
+            stream_url: format!("/stream/{id}"),
             subtitles,
             progress_seconds: *progress.get(&id).unwrap_or(&0),
             duration_seconds: info.duration_seconds,

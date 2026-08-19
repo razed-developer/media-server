@@ -76,3 +76,23 @@ pub fn playback_mode(container: Option<&str>, video: Option<&str>, audio: Option
         "transcode".into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::playback_mode;
+
+    #[test]
+    fn direct_plays_h264_aac_mp4() {
+        assert_eq!(playback_mode(Some("mp4"), Some("h264"), Some("aac")), "directPlay");
+    }
+
+    #[test]
+    fn remuxes_browser_codecs_in_mkv() {
+        assert_eq!(playback_mode(Some("matroska"), Some("h264"), Some("aac")), "remux");
+    }
+
+    #[test]
+    fn transcodes_hevc() {
+        assert_eq!(playback_mode(Some("matroska"), Some("hevc"), Some("aac")), "transcode");
+    }
+}

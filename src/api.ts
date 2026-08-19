@@ -3,11 +3,7 @@ import type { AuthStatus, MediaItem, ServerStatus } from './types';
 
 export const isTauriDesktop = () => Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
-export const serverBaseUrl = () => {
-  if (isTauriDesktop()) return 'http://127.0.0.1:8765';
-  if (window.location.port === '1420') return `${window.location.protocol}//${window.location.hostname}:8765`;
-  return '';
-};
+export const serverBaseUrl = () => isTauriDesktop() ? 'http://127.0.0.1:8765' : '';
 
 export const resolveMediaUrl = (url?: string | null) => {
   if (!url) return undefined;
@@ -58,7 +54,7 @@ export async function getServerStatus(): Promise<ServerStatus> {
   };
   return {
     ...status,
-    localUrl: serverBaseUrl() || window.location.origin,
+    localUrl: window.location.origin,
   };
 }
 

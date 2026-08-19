@@ -23,6 +23,7 @@ export interface MediaItem {
   episodeEnd?: number;
   path: string;
   streamUrl: string;
+  posterUrl?: string;
   subtitles: SubtitleTrack[];
   progressSeconds: number;
   durationSeconds?: number;

@@ -26,12 +26,9 @@ pub struct MediaItem {
     pub episode_end: Option<u16>,
     pub path: String,
     pub stream_url: String,
-    #[serde(default)]
-    pub poster_url: Option<String>,
-    #[serde(default)]
-    pub backdrop_url: Option<String>,
-    #[serde(default)]
-    pub thumbnail_url: Option<String>,
+    #[serde(default)] pub poster_url: Option<String>,
+    #[serde(default)] pub backdrop_url: Option<String>,
+    #[serde(default)] pub thumbnail_url: Option<String>,
     pub subtitles: Vec<SubtitleTrack>,
     pub progress_seconds: u64,
     pub duration_seconds: Option<u64>,
@@ -41,6 +38,14 @@ pub struct MediaItem {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub playback_mode: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Playlist {
+    pub id: String,
+    pub name: String,
+    pub media_ids: Vec<String>,
 }
 
 #[derive(Debug, Default)]

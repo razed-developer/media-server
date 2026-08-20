@@ -9,15 +9,38 @@ const API: &str = "https://api.themoviedb.org/3";
 const KEYRING_SERVICE: &str = "onyx-metadata";
 const KEYRING_USER: &str = "tmdb-read-token";
 
-fn token_entry() -> Result<Entry, String> { Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string()) }
-pub fn configured() -> bool { token_entry().ok().and_then(|e| e.get_password().ok()).is_some() }
+fn token_entry() -> Result<Entry, String> {
+    Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| format!("Could not open the operating-system credential store for TMDB: {e}"))
+}
+
+fn read_token() -> Result<String, String> {
+    token_entry()?.get_password().map_err(|e| {
+        format!(
+            "TMDB credential could not be read from the operating-system credential store: {e}. Re-save the token in Settings → Metadata."
+        )
+    })
+}
+
+pub fn configured() -> bool { read_token().is_ok() }
+
 pub fn save_token(token: &str) -> Result<(), String> {
     let token = token.trim();
     if token.is_empty() { return Err("TMDB read access token cannot be empty".into()); }
-    token_entry()?.set_password(token).map_err(|e| e.to_string())
+    let entry = token_entry()?;
+    entry.set_password(token).map_err(|e| format!("Could not save the TMDB token in the operating-system credential store: {e}"))?;
+    let saved = entry.get_password().map_err(|e| format!("TMDB token was written but could not be read back from the operating-system credential store: {e}"))?;
+    if saved != token { return Err("TMDB credential verification failed after saving.".into()); }
+    Ok(())
 }
-pub fn clear_token() -> Result<(), String> { let entry = token_entry()?; let _ = entry.delete_credential(); Ok(()) }
-fn token() -> Result<String, String> { token_entry()?.get_password().map_err(|_| "TMDB is not configured. Add an API Read Access Token in Settings → Metadata.".to_string()) }
+
+pub fn clear_token() -> Result<(), String> {
+    let entry = token_entry()?;
+    let _ = entry.delete_credential();
+    Ok(())
+}
+
+fn token() -> Result<String, String> { read_token() }
 fn client() -> Client { Client::builder().user_agent("Onyx/0.1 metadata-provider").build().unwrap_or_else(|_| Client::new()) }
 async fn get_json(url: &str, params: &[(&str, String)]) -> Result<Value, String> {
     let response = client().get(url).bearer_auth(token()?).query(params).send().await.map_err(|e| e.to_string())?;

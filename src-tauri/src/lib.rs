@@ -84,7 +84,7 @@ pub fn run() {
             commands::identify_show, commands::reset_identification, commands::list_playlists,
             commands::create_playlist, commands::add_to_playlist, commands::remove_from_playlist,
             commands::delete_playlist, commands::ibroadcast_status, commands::ibroadcast_device_start,
-            ibroadcast_oauth::ibroadcast_device_poll, commands::ibroadcast_sync, commands::ibroadcast_library,
+            ibroadcast_oauth::ibroadcast_device_poll_compat, commands::ibroadcast_sync, commands::ibroadcast_library,
             commands::ibroadcast_disconnect, commands::metadata_provider_status,
             commands::set_tmdb_token, commands::clear_tmdb_token, commands::test_tmdb,
             commands::metadata_search, commands::metadata_apply_match, commands::metadata_auto_match_all,

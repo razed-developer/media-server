@@ -1,112 +1,126 @@
-# iBroadcast integration for Onyx
+# Onyx iBroadcast Integration
 
-## Goal
+## Status
 
-Add an optional **Music / iBroadcast** source to an Onyx user profile without mixing iBroadcast credentials, history, playlists, or preferences between Onyx users.
+The first iBroadcast integration is now implemented as an **optional, compartmentalized provider module**. It remains separate from the Movie/TV library so it can evolve—or be removed—without changing the core media-server model.
 
-## Why it fits
+The implementation was informed by the previously working iBroadcast support in `razed-developer/cherry-rise` and updated against iBroadcast's current OAuth 2.0, library, artwork and streaming documentation.
 
-iBroadcast has an official developer API and OAuth 2.0 flow. Its current developer documentation describes separate API, Library, Play Queue, Streaming, and Artwork services. The Library response includes a user's tracks, artists, albums, playlists, and tags, while the Streaming server provides audio playback URLs.
+## Separation from core Onyx
 
-References:
-
-- https://help.ibroadcast.com/en/developer/introduction
-- https://help.ibroadcast.com/en/developer/authentication
-- https://help.ibroadcast.com/en/developer/quick-start
-- https://help.ibroadcast.com/en/developer/components/streaming
-
-## Proposed Onyx architecture
-
-### Per-user connection
-
-Add a table such as:
-
-```sql
-CREATE TABLE user_integrations (
-  user_id TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  access_token TEXT,
-  refresh_token TEXT,
-  expires_at INTEGER,
-  provider_user_id TEXT,
-  settings_json TEXT,
-  PRIMARY KEY (user_id, provider)
-);
-```
-
-Tokens should ultimately be encrypted at rest or stored through the operating-system credential store. They should never be exposed to browser clients.
-
-### Authentication
-
-iBroadcast now documents OAuth 2.0 and supports both `authorization_code` and `device_code` grants.
-
-For Onyx, the preferred approach is:
-
-1. Desktop setup: use authorization-code + PKCE or device-code.
-2. TV/browser setup: device-code is ideal because a couch/TV user can authorize on a phone or computer.
-3. Store the resulting access token, refresh token, and expiry against the active Onyx user.
-4. Refresh tokens server-side in Rust when required.
-5. Revoke the provider token when the user disconnects iBroadcast.
-
-### Library
-
-The Rust server would request the user's library from iBroadcast's Library service and normalize it into Onyx-specific music models:
+Rust provider code lives in:
 
 ```text
-Artist
-  Album
-    Track
-Playlist
-Tag
+src-tauri/src/ibroadcast.rs
 ```
 
-The provider library should remain separate from Movies and TV in SQLite. Onyx should cache metadata/artwork indexes, not duplicate the user's iBroadcast audio files.
-
-### Playback
-
-iBroadcast's Streaming service creates signed audio URLs from the user's access information, track URL, file ID, platform, and version. Onyx should generate these URLs server-side and proxy or hand them to the authenticated client without exposing refresh tokens.
-
-### Play history
-
-iBroadcast's API supports sending history information. Onyx should keep its own per-profile analytics while also reporting plays/skips to iBroadcast when appropriate, so the two systems stay useful independently.
-
-### Playlists
-
-Initially treat iBroadcast playlists as provider playlists rather than merging them with Onyx movie/TV playlists. Later, the UI can visually unify them while retaining provider ownership.
-
-## UI proposal
-
-Under the active Onyx profile:
+Provider cache lives below the Onyx application-data root:
 
 ```text
-Connected services
-  iBroadcast
-    [ Connect ]
+providers/
+  ibroadcast/
+    <onyx-profile-id>/
+      library.json
 ```
 
-After connection:
+OAuth credentials are **not** stored in the media SQLite database or sent to browser clients. They are stored through the operating-system credential store using the Rust `keyring` crate.
+
+Removing the iBroadcast module would not remove or corrupt Movies, TV, Onyx watch history, hidden-media choices, Onyx playlists, themes, or video analytics.
+
+## Per-user connection model
+
+Each Onyx profile can independently be disconnected from iBroadcast, connected to its own account, and synced at a different time.
+
+The server-level iBroadcast **client ID** is configured once under **Settings → Music**. Access/refresh tokens belong to individual Onyx profiles.
+
+## Authorization
+
+Onyx uses iBroadcast's device-code OAuth flow because it works well with desktop and couch/TV clients.
+
+1. Onyx requests a device code using the configured client ID.
+2. Onyx displays the verification address and short user code.
+3. The user authorizes the application from a phone/computer.
+4. Onyx polls iBroadcast at the supplied interval.
+5. On success, the access/refresh token is stored in the OS credential store for the active profile.
+6. Onyx immediately syncs the user's music library.
+
+Onyx requests account/library read access plus `offline_access` for token refresh.
+
+## Library cache and browsing
+
+A successful sync normalizes iBroadcast's map-indexed library response into dedicated provider objects:
+
+- artists
+- albums
+- tracks
+- playlists
+
+The Onyx Music page supports, at minimum:
+
+- artist browsing/search
+- album browsing/search
+- combined **artist + album** search
+- track search
+- playlist browsing/search
+
+Selecting an artist opens that artist's albums. Selecting an album or playlist opens its tracks.
+
+## Artwork
+
+The normalized cache keeps iBroadcast artwork URLs for artists, albums, tracks and playlists when supplied. Music artwork remains provider-owned and is not mixed into the Movie/TV artwork cache.
+
+## Playback
+
+The browser is **not** given the iBroadcast OAuth token or the signed iBroadcast streaming URL.
 
 ```text
-Music
-  Recently Played
-  Albums
-  Artists
-  Playlists
+Browser/Tauri Music player
+        ↓
+Onyx /api/ibroadcast/stream/<track-id>
+        ↓
+Onyx Rust provider module
+        ↓
+iBroadcast streaming service
 ```
 
-The Movies and TV interface should remain unchanged.
+Onyx builds the provider streaming request server-side and proxies the response. HTTP `Range` is forwarded where supplied so the audio element can seek when the provider supports it.
 
-## Implementation milestones
+The first implementation requests a high-quality 320 kbps stream where the cached source permits. Quality controls can be exposed later without changing the provider boundary.
 
-1. Register Onyx as an app in the iBroadcast web player and obtain a `client_id` (and any secret required by the chosen grant).
-2. Add provider-token storage and OAuth/device-code endpoints in Rust.
-3. Add Connect/Disconnect controls to the Onyx profile menu.
-4. Fetch and cache the iBroadcast library.
-5. Add a minimal Music section.
-6. Add audio playback and artwork.
-7. Synchronize play history and provider playlists.
-8. Add music-specific analytics to Onyx.
+## Setup wizard
 
-## Security boundary
+The first-run Onyx wizard contains an optional iBroadcast step:
 
-The browser should never receive an iBroadcast refresh token or client secret. OAuth/token exchange, refresh, library calls, and signed playback URL generation should happen in the Rust server. Browser clients should talk only to Onyx's authenticated HTTP API.
+1. enter the Onyx iBroadcast client ID
+2. select an Onyx profile
+3. connect that profile's iBroadcast account
+4. repeat for other profiles as desired
+
+The whole step can be skipped. iBroadcast can be configured later under **Settings → Music**.
+
+## Settings
+
+```text
+Settings
+└── Music
+    ├── Onyx iBroadcast client ID
+    ├── Connect current profile
+    ├── Sync current profile
+    └── Disconnect current profile
+```
+
+## Current validation boundary
+
+The module passes Windows frontend build, Rust/Tauri `cargo check`, and the repository Rust test suite.
+
+The next validation is a live-account test to confirm the exact current library-map fields and streaming path returned for the user's iBroadcast account. The parser intentionally tolerates several field names inherited from Cherry Rise's known-working implementation, but real-account verification remains important.
+
+## Future extensions
+
+- music recently played/home rail
+- album/artist detail metadata
+- iBroadcast playlist editing
+- play queue integration
+- per-user music analytics
+- selectable streaming quality/original quality
+- provider reconnection/expiry diagnostics

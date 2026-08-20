@@ -15,6 +15,7 @@ mod models;
 mod naming;
 mod probe;
 mod server;
+mod subtitles;
 mod user_features;
 
 use app_state::{app_data_dir, load_settings, AppState};
@@ -89,6 +90,9 @@ pub fn run() {
             live_channels::live_channels_list, live_channels::live_channels_save,
             live_channels::live_channels_delete, live_channels::live_channels_set_artwork,
             live_channels::live_channels_guide,
+            subtitles::subtitle_provider_status, subtitles::subtitle_provider_save,
+            subtitles::subtitle_provider_clear, subtitles::subtitle_provider_test,
+            subtitles::subtitle_search, subtitles::subtitle_download,
             user_features::user_avatars, user_features::user_avatar_set_builtin,
             user_features::user_avatar_set_custom, user_features::user_reactions,
             user_features::user_reaction_set, user_features::user_recommendation_send,

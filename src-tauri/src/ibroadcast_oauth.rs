@@ -167,7 +167,6 @@ async fn handle_callback(listener: TcpListener, shared: Shared, user_id: String,
     if let Err(error) = result {
         activity::error("iBroadcast", error);
     }
-    // Keep shared alive for the lifetime of the callback task.
     drop(shared);
 }
 
@@ -185,6 +184,7 @@ pub async fn ibroadcast_authorization_start(user_id: String, state: TauriState<'
             ("client_id", client_id.as_str()),
             ("state", oauth_state.as_str()),
             ("response_type", "code"),
+            ("redirectUri", REDIRECT_URI),
             ("code_challenge", code_challenge.as_str()),
             ("code_challenge_method", "S256"),
             ("scope", SCOPES),

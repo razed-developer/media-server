@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Plus, Radio, Shuffle, Trash2 } from 'lucide-react';
-import { chooseLiveChannelArtwork, deleteLiveChannel, listLiveChannels, listMedia, listPlaylists, saveLiveChannel, setLiveChannelArtwork } from '../api';
+import { chooseLiveChannelArtwork, deleteLiveChannel, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
 import type { LiveChannel, LiveChannelCriteria, LiveChannelOrder, MediaItem, Playlist } from '../types';
 
 export function LiveChannelsSettings(){
@@ -66,7 +66,7 @@ export function LiveChannelsSettings(){
 
     <section className="live-channel-settings-list">
       {channels.map(channel=><article className="settings-card live-channel-setting" key={channel.id}>
-        <div className="live-channel-setting-art">{channel.artUrl?<img src={channel.artUrl} alt=""/>:<Radio size={26}/>}</div>
+        <div className="live-channel-setting-art">{channel.artUrl?<img src={resolveMediaUrl(channel.artUrl)} alt=""/>:<Radio size={26}/>}</div>
         <div className="live-channel-setting-copy"><h3>{channel.name}</h3><p>{channel.criteriaType==='playlist'?playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist':channel.criteriaValue} · {channel.orderMode==='shuffle'?'Shuffled':'In order'}</p></div>
         <button onClick={()=>void art(channel)}><Image size={16}/>Artwork</button>
         <button className="danger-text" onClick={()=>void remove(channel)}><Trash2 size={16}/>Delete</button>

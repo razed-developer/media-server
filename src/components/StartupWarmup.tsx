@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { getActiveUserId, getLiveChannelGuide, getSetupStatus, isTauriDesktop, listLiveChannels, listMedia, listPlaylists } from '../api';
+import type { GuideChannel } from '../types';
 
 const MIN_VISIBLE_MS=650;
 const MAX_VISIBLE_MS=4500;
+const MIN_GUIDE_REMAINING=60*60;
 const sleep=(ms:number)=>new Promise(resolve=>window.setTimeout(resolve,ms));
+const guideCacheKey=()=>`onyx-live-guide:${getActiveUserId()}`;
+const cachedGuideHasRoom=(channelIds:string[])=>{try{const raw=localStorage.getItem(guideCacheKey());if(!raw)return false;const rows=JSON.parse(raw) as GuideChannel[];if(rows.length!==channelIds.length)return false;const known=new Set(channelIds);if(rows.some(row=>!known.has(row.channel.id)))return false;const horizon=Math.floor(Date.now()/1000)+MIN_GUIDE_REMAINING;return rows.every(row=>row.programs.length===0||Math.max(...row.programs.map(program=>program.endsAt))>=horizon)}catch{return false}};
 
 export function StartupWarmup(){
  const[visible,setVisible]=useState(isTauriDesktop());
@@ -22,7 +26,9 @@ export function StartupWarmup(){
     const shows=[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b));
     const genres=[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b));
     sessionStorage.setItem(`onyx-live-criteria:${getActiveUserId()}`,JSON.stringify({shows,genres,playlists,createdAt:Date.now()}));
-    if(channels.length){setMessage('Warming Live TV guide…');try{const guide=await getLiveChannelGuide();localStorage.setItem(`onyx-live-guide:${getActiveUserId()}`,JSON.stringify(guide))}catch{/* Live TV remains optional */}}
+    const channelIds=channels.map(channel=>channel.id);
+    if(channels.length&&!cachedGuideHasRoom(channelIds)){setMessage('Extending Live TV guide…');try{const guide=await getLiveChannelGuide();localStorage.setItem(guideCacheKey(),JSON.stringify(guide))}catch{/* Live TV remains optional */}}
+    else if(channels.length)setMessage('Live TV is ready…');
    }catch{/* App surfaces any real load error after startup */}
    finally{const remaining=Math.max(0,MIN_VISIBLE_MS-(Date.now()-started));if(remaining)await sleep(remaining);if(!disposed)setVisible(false);window.clearTimeout(timeout)}
   };

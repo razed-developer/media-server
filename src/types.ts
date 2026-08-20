@@ -8,6 +8,7 @@ export interface UserPreferences{theme:ThemeName;}
 export interface Playlist{id:string;name:string;mediaIds:string[];}
 export interface AnalyticsEntry{label:string;seconds:number;}
 export interface AnalyticsSummary{totalSeconds:number;movieSeconds:number;tvSeconds:number;shows:AnalyticsEntry[];genres:AnalyticsEntry[];}
+export interface ActivityEntry{timestamp:number;level:'info'|'warning'|'error'|string;category:string;message:string;}
 export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;setupComplete?:boolean;ibroadcastClientId?:string;}
 export interface AuthStatus{required:boolean;authenticated:boolean;}
 export interface SetupStatus{complete:boolean;moviePath?:string;tvPath?:string;ibroadcastClientId?:string;users:UserProfile[];}

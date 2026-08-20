@@ -1,0 +1,33 @@
+import { useEffect, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
+import { getActiveUserId, getLiveChannelGuide, getSetupStatus, isTauriDesktop, listLiveChannels, listMedia, listPlaylists } from '../api';
+
+const MIN_VISIBLE_MS=650;
+const MAX_VISIBLE_MS=4500;
+const sleep=(ms:number)=>new Promise(resolve=>window.setTimeout(resolve,ms));
+
+export function StartupWarmup(){
+ const[visible,setVisible]=useState(isTauriDesktop());
+ const[message,setMessage]=useState('Preparing your library…');
+ useEffect(()=>{
+  if(!isTauriDesktop()){setVisible(false);return}
+  let disposed=false;const started=Date.now();
+  const timeout=window.setTimeout(()=>{if(!disposed)setVisible(false)},MAX_VISIBLE_MS);
+  const run=async()=>{
+   try{
+    const setup=await getSetupStatus();if(!setup.complete){setVisible(false);return}
+    setMessage('Loading movies and television…');
+    const[media,playlists,channels]=await Promise.all([listMedia(),listPlaylists(),listLiveChannels()]);
+    if(disposed)return;
+    const shows=[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b));
+    const genres=[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b));
+    sessionStorage.setItem(`onyx-live-criteria:${getActiveUserId()}`,JSON.stringify({shows,genres,playlists,createdAt:Date.now()}));
+    if(channels.length){setMessage('Warming Live TV guide…');try{const guide=await getLiveChannelGuide();localStorage.setItem(`onyx-live-guide:${getActiveUserId()}`,JSON.stringify(guide))}catch{/* Live TV remains optional */}}
+   }catch{/* App surfaces any real load error after startup */}
+   finally{const remaining=Math.max(0,MIN_VISIBLE_MS-(Date.now()-started));if(remaining)await sleep(remaining);if(!disposed)setVisible(false);window.clearTimeout(timeout)}
+  };
+  void run();return()=>{disposed=true;window.clearTimeout(timeout)};
+ },[]);
+ if(!visible)return null;
+ return <div className="startup-warmup" role="status" aria-live="polite"><div className="startup-warmup-inner"><div className="startup-mark">O</div><div><strong>Onyx</strong><span>{message}</span></div><LoaderCircle className="spin" size={17}/></div></div>;
+}

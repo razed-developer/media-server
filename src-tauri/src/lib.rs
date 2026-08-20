@@ -7,6 +7,7 @@ mod database;
 mod ibroadcast;
 mod library;
 mod live_channels;
+mod live_server;
 mod metadata;
 mod metadata_view;
 mod models;

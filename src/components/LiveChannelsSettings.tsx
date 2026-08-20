@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pencil, Plus, Radio, Shuffle, Trash2, X } from 'lucide-react';
+import { Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, X } from 'lucide-react';
 import { chooseLiveChannelArtwork, deleteLiveChannel, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
 import type { LiveChannel, LiveChannelCriteria, LiveChannelOrder, MediaItem, Playlist } from '../types';
 
@@ -11,7 +11,8 @@ export function LiveChannelsSettings(){
   const[editingId,setEditingId]=useState<string|undefined>();
   const[name,setName]=useState('');
   const[criteriaType,setCriteriaType]=useState<LiveChannelCriteria>('show');
-  const[criteriaValue,setCriteriaValue]=useState('');
+  const[selectedValues,setSelectedValues]=useState<string[]>([]);
+  const[playlistValue,setPlaylistValue]=useState('');
   const[orderMode,setOrderMode]=useState<LiveChannelOrder>('sequential');
   const[error,setError]=useState<string|null>(null);
   const[busy,setBusy]=useState(false);
@@ -20,8 +21,6 @@ export function LiveChannelsSettings(){
   const refresh=async()=>{
     setCriteriaBusy(true);
     try{
-      // Channel definitions are tiny and should appear immediately. Do not make
-      // them wait for the much larger media library/metadata load.
       const saved=await listLiveChannels();
       setChannels(saved);setError(null);
       const[m,p]=await Promise.all([listMedia(),listPlaylists()]);
@@ -32,19 +31,42 @@ export function LiveChannelsSettings(){
 
   const shows=useMemo(()=>[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b)),[media]);
   const genres=useMemo(()=>[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b)),[media]);
-  const options=criteriaType==='show'?shows:criteriaType==='genre'?genres:playlists.map(playlist=>playlist.id);
-  const optionLabel=(value:string)=>criteriaType==='playlist'?playlists.find(playlist=>playlist.id===value)?.name??value:value;
+  const multiOptions=criteriaType==='show'?shows:genres;
+  const selectedCount=criteriaType==='playlist'?(playlistValue?1:0):selectedValues.length;
 
-  useEffect(()=>{if(!options.includes(criteriaValue))setCriteriaValue(options[0]??'')},[criteriaType,media.length,playlists.length]);
+  useEffect(()=>{
+    if(criteriaType==='playlist'){
+      if(!playlists.some(playlist=>playlist.id===playlistValue))setPlaylistValue(playlists[0]?.id??'');
+    }else{
+      const valid=new Set(multiOptions);
+      setSelectedValues(current=>current.filter(value=>valid.has(value)));
+    }
+  },[criteriaType,media.length,playlists.length]);
 
-  const resetBuilder=()=>{setEditingId(undefined);setName('');setCriteriaType('show');setCriteriaValue(shows[0]??'');setOrderMode('sequential')};
-  const edit=(channel:LiveChannel)=>{setEditingId(channel.id);setName(channel.name);setCriteriaType(channel.criteriaType);setCriteriaValue(channel.criteriaValue);setOrderMode(channel.orderMode)};
+  const toggleValue=(value:string)=>setSelectedValues(current=>current.includes(value)?current.filter(item=>item!==value):[...current,value]);
+  const resetBuilder=()=>{setEditingId(undefined);setName('');setCriteriaType('show');setSelectedValues([]);setPlaylistValue(playlists[0]?.id??'');setOrderMode('sequential')};
+  const edit=(channel:LiveChannel)=>{
+    setEditingId(channel.id);setName(channel.name);setCriteriaType(channel.criteriaType);setOrderMode(channel.orderMode);
+    if(channel.criteriaType==='playlist'){
+      setPlaylistValue(channel.criteriaValue);
+      setSelectedValues([]);
+    }else{
+      const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);
+      setSelectedValues(values);
+    }
+  };
   const saveChannel=async()=>{
-    if(!name.trim()||!criteriaValue||!desktop)return;
+    if(!name.trim()||selectedCount===0||!desktop)return;
     setBusy(true);setError(null);
     try{
-      // Update the visible list directly from the lightweight save response.
-      setChannels(await saveLiveChannel({id:editingId,name:name.trim(),criteriaType,criteriaValue,orderMode}));
+      setChannels(await saveLiveChannel({
+        id:editingId,
+        name:name.trim(),
+        criteriaType,
+        criteriaValue:criteriaType==='playlist'?playlistValue:selectedValues[0],
+        criteriaValues:criteriaType==='playlist'?[playlistValue]:selectedValues,
+        orderMode
+      }));
       resetBuilder();
     }catch(cause){setError(String(cause))}finally{setBusy(false)}
   };
@@ -60,6 +82,13 @@ export function LiveChannelsSettings(){
     try{setChannels(await setLiveChannelArtwork(channel.id,path))}catch(cause){setError(String(cause))}
   };
 
+  const channelSummary=(channel:LiveChannel)=>{
+    if(channel.criteriaType==='playlist')return playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist';
+    const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);
+    if(values.length<=3)return values.join(', ');
+    return `${values.slice(0,3).join(', ')} +${values.length-3} more`;
+  };
+
   return <div className="live-settings">
     <p className="eyebrow">EXPERIMENTAL MODULE</p><h1>Live TV</h1>
     <p>Build clock-driven channels from your library. A channel never pauses: leaving for twenty minutes means it is twenty minutes further through its schedule when you return.</p>
@@ -67,20 +96,21 @@ export function LiveChannelsSettings(){
     {error&&<div className="error-banner">{error}</div>}
 
     {desktop&&<section className="settings-card live-channel-builder">
-      <div className="live-builder-heading"><Radio size={22}/><div><h3>{editingId?'Edit channel':'Create channel'}</h3><p>Channels belong to the current Onyx profile and are stored separately from the media library.</p></div></div>
+      <div className="live-builder-heading"><Radio size={22}/><div><h3>{editingId?'Edit channel':'Create channel'}</h3><p>Choose one or more shows or genres for a combined channel, or use a single Onyx playlist.</p></div></div>
       <div className="live-builder-grid">
-        <label><span>Channel name</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Comedy Central"/></label>
-        <label><span>Content</span><select value={criteriaType} onChange={event=>setCriteriaType(event.target.value as LiveChannelCriteria)}><option value="show">TV show</option><option value="genre">Genre</option><option value="playlist">Playlist</option></select></label>
-        <label><span>{criteriaType==='show'?'Show':criteriaType==='genre'?'Genre':'Playlist'}</span><select value={criteriaValue} onChange={event=>setCriteriaValue(event.target.value)} disabled={!options.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:options.length?options.map(value=><option value={value} key={value}>{optionLabel(value)}</option>):<option value="">No matching content</option>}</select></label>
+        <label><span>Channel name</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Star Wars"/></label>
+        <label><span>Content</span><select value={criteriaType} onChange={event=>setCriteriaType(event.target.value as LiveChannelCriteria)}><option value="show">TV shows</option><option value="genre">Genres</option><option value="playlist">Playlist</option></select></label>
+        {criteriaType==='playlist'?<label><span>Playlist</span><select value={playlistValue} onChange={event=>setPlaylistValue(event.target.value)} disabled={!playlists.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:playlists.length?playlists.map(playlist=><option value={playlist.id} key={playlist.id}>{playlist.name}</option>):<option value="">No playlists</option>}</select></label>:<div className="live-multi-field"><span>{criteriaType==='show'?'Shows':'Genres'} <small>{selectedValues.length} selected</small></span><div className="live-multi-options">{criteriaBusy?<div className="live-multi-empty">Loading choices…</div>:multiOptions.length?multiOptions.map(value=><button type="button" key={value} className={selectedValues.includes(value)?'selected':''} onClick={()=>toggleValue(value)}>{selectedValues.includes(value)&&<Check size={14}/>}<span>{value}</span></button>):<div className="live-multi-empty">No matching content</div>}</div></div>}
         <label><span>Playback order</span><select value={orderMode} onChange={event=>setOrderMode(event.target.value as LiveChannelOrder)}><option value="sequential">In order</option><option value="shuffle">Shuffled</option></select></label>
       </div>
-      <div className="metadata-actions"><button className="primary" disabled={busy||!name.trim()||!criteriaValue} onClick={()=>void saveChannel()}>{editingId?<Pencil size={17}/>:<Plus size={17}/>} {busy?'Saving…':editingId?'Save channel':'Create channel'}</button>{editingId&&<button onClick={resetBuilder}><X size={16}/>Cancel edit</button>}</div>
+      {criteriaType!=='playlist'&&selectedValues.length>0&&<div className="live-selected-chips">{selectedValues.map(value=><button type="button" key={value} onClick={()=>toggleValue(value)}>{value}<X size={13}/></button>)}</div>}
+      <div className="metadata-actions"><button className="primary" disabled={busy||!name.trim()||selectedCount===0} onClick={()=>void saveChannel()}>{editingId?<Pencil size={17}/>:<Plus size={17}/>} {busy?'Saving…':editingId?'Save channel':'Create channel'}</button>{editingId&&<button onClick={resetBuilder}><X size={16}/>Cancel edit</button>}</div>
     </section>}
 
     <section className="live-channel-settings-list">
       {channels.map(channel=><article className="settings-card live-channel-setting" key={channel.id}>
         <div className="live-channel-setting-art">{channel.artUrl?<img src={resolveMediaUrl(channel.artUrl)} alt=""/>:<Radio size={26}/>}</div>
-        <div className="live-channel-setting-copy"><h3>{channel.name}</h3><p>{channel.criteriaType==='playlist'?playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist':channel.criteriaValue} · {channel.orderMode==='shuffle'?'Shuffled':'In order'}</p></div>
+        <div className="live-channel-setting-copy"><h3>{channel.name}</h3><p>{channelSummary(channel)} · {channel.orderMode==='shuffle'?'Shuffled':'In order'}</p></div>
         {desktop&&<><button onClick={()=>edit(channel)}><Pencil size={16}/>Edit</button><button onClick={()=>void art(channel)}><Image size={16}/>Artwork</button><button className="danger-text" onClick={()=>void remove(channel)}><Trash2 size={16}/>Delete</button></>}
       </article>)}
       {!channels.length&&<div className="settings-card live-settings-empty"><Shuffle size={24}/><div><strong>No Live Channels yet</strong><p>Create one above. The guide will appear in the main Onyx sidebar.</p></div></div>}

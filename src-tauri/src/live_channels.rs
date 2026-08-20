@@ -1,8 +1,9 @@
-use crate::{activity, models::{MediaItem, Playlist}};
+use crate::{activity, database, metadata, metadata_view, models::{MediaItem, Playlist}, Shared};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use tauri::State as TauriState;
 use uuid::Uuid;
 
 const CHANNEL_DIR: &str = "live-channels";
@@ -52,17 +53,9 @@ pub struct GuideChannel {
     pub programs: Vec<GuideProgram>,
 }
 
-fn user_dir(root: &Path, user_id: &str) -> PathBuf {
-    root.join(CHANNEL_DIR).join(user_id)
-}
-
-fn channels_path(root: &Path, user_id: &str) -> PathBuf {
-    user_dir(root, user_id).join("channels.json")
-}
-
-fn art_dir(root: &Path) -> PathBuf {
-    root.join(CHANNEL_DIR).join("art")
-}
+fn user_dir(root: &Path, user_id: &str) -> PathBuf { root.join(CHANNEL_DIR).join(user_id) }
+fn channels_path(root: &Path, user_id: &str) -> PathBuf { user_dir(root, user_id).join("channels.json") }
+fn art_dir(root: &Path) -> PathBuf { root.join(CHANNEL_DIR).join("art") }
 
 fn possible_art(root: &Path, channel_id: &str) -> Option<PathBuf> {
     for extension in ["png", "jpg", "jpeg", "webp"] {
@@ -74,8 +67,7 @@ fn possible_art(root: &Path, channel_id: &str) -> Option<PathBuf> {
 
 fn decorate_art(root: &Path, channels: &mut [LiveChannel]) {
     for channel in channels {
-        channel.art_url = possible_art(root, &channel.id)
-            .map(|_| format!("/api/live-channels/art/{}", channel.id));
+        channel.art_url = possible_art(root, &channel.id).map(|_| format!("/api/live-channels/art/{}", channel.id));
     }
 }
 
@@ -93,19 +85,14 @@ fn persist(root: &Path, user_id: &str, channels: &[LiveChannel]) -> Result<(), S
     if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
     let mut stored = channels.to_vec();
     for channel in &mut stored { channel.art_url = None; }
-    fs::write(path, serde_json::to_vec_pretty(&stored).map_err(|error| error.to_string())?)
-        .map_err(|error| error.to_string())
+    fs::write(path, serde_json::to_vec_pretty(&stored).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
 }
 
 fn validate_input(input: &LiveChannelInput) -> Result<(), String> {
     if input.name.trim().is_empty() { return Err("Channel name cannot be empty".into()); }
-    if !matches!(input.criteria_type.as_str(), "show" | "genre" | "playlist") {
-        return Err("Channel criteria must be a TV show, genre, or playlist".into());
-    }
+    if !matches!(input.criteria_type.as_str(), "show" | "genre" | "playlist") { return Err("Channel criteria must be a TV show, genre, or playlist".into()); }
     if input.criteria_value.trim().is_empty() { return Err("Choose content for this channel".into()); }
-    if !matches!(input.order_mode.as_str(), "sequential" | "shuffle") {
-        return Err("Channel order must be sequential or shuffle".into());
-    }
+    if !matches!(input.order_mode.as_str(), "sequential" | "shuffle") { return Err("Channel order must be sequential or shuffle".into()); }
     Ok(())
 }
 
@@ -131,7 +118,7 @@ pub fn save(root: &Path, user_id: &str, input: LiveChannelInput) -> Result<Vec<L
         channels.push(next);
     }
     persist(root, user_id, &channels)?;
-    activity::info("Live TV", format!("Saved channel “{}” ({})", channels.iter().find(|channel| channel.id == id).map(|channel| channel.name.as_str()).unwrap_or("Channel"), id));
+    activity::info("Live TV", format!("Saved channel “{}”", channels.iter().find(|channel| channel.id == id).map(|channel| channel.name.as_str()).unwrap_or("Channel")));
     decorate_art(root, &mut channels);
     Ok(channels)
 }
@@ -159,15 +146,12 @@ pub fn set_artwork(root: &Path, user_id: &str, channel_id: &str, source: &Path) 
         let path = art_dir(root).join(format!("{channel_id}.{old}"));
         if path.is_file() { let _ = fs::remove_file(path); }
     }
-    let destination = art_dir(root).join(format!("{channel_id}.{extension}"));
-    fs::copy(source, &destination).map_err(|error| error.to_string())?;
+    fs::copy(source, art_dir(root).join(format!("{channel_id}.{extension}"))).map_err(|error| error.to_string())?;
     activity::info("Live TV", format!("Updated custom artwork for channel {channel_id}"));
     list(root, user_id)
 }
 
-pub fn artwork(root: &Path, channel_id: &str) -> Option<PathBuf> {
-    possible_art(root, channel_id)
-}
+pub fn artwork(root: &Path, channel_id: &str) -> Option<PathBuf> { possible_art(root, channel_id) }
 
 fn deterministic_key(channel_id: &str, media_id: &str) -> String {
     let mut hasher = Sha256::new();
@@ -179,18 +163,8 @@ fn deterministic_key(channel_id: &str, media_id: &str) -> String {
 
 fn sequential_sort(items: &mut [MediaItem]) {
     items.sort_by(|a, b| {
-        let a_key = (
-            a.show_title.as_deref().unwrap_or("").to_lowercase(),
-            a.season.unwrap_or(0),
-            a.episode.unwrap_or(0),
-            a.title.to_lowercase(),
-        );
-        let b_key = (
-            b.show_title.as_deref().unwrap_or("").to_lowercase(),
-            b.season.unwrap_or(0),
-            b.episode.unwrap_or(0),
-            b.title.to_lowercase(),
-        );
+        let a_key = (a.show_title.as_deref().unwrap_or("").to_lowercase(), a.season.unwrap_or(0), a.episode.unwrap_or(0), a.title.to_lowercase());
+        let b_key = (b.show_title.as_deref().unwrap_or("").to_lowercase(), b.season.unwrap_or(0), b.episode.unwrap_or(0), b.title.to_lowercase());
         a_key.cmp(&b_key)
     });
 }
@@ -208,15 +182,11 @@ fn candidates(channel: &LiveChannel, media: &[MediaItem], playlists: &[Playlist]
         _ => Vec::new(),
     };
     if channel.criteria_type != "playlist" { sequential_sort(&mut values); }
-    if channel.order_mode == "shuffle" {
-        values.sort_by_key(|item| deterministic_key(&channel.id, &item.id));
-    }
+    if channel.order_mode == "shuffle" { values.sort_by_key(|item| deterministic_key(&channel.id, &item.id)); }
     values
 }
 
-fn duration(item: &MediaItem) -> u64 {
-    item.duration_seconds.unwrap_or(if item.kind == "movie" { 7_200 } else { 1_800 }).max(1)
-}
+fn duration(item: &MediaItem) -> u64 { item.duration_seconds.unwrap_or(if item.kind == "movie" { 7_200 } else { 1_800 }).max(1) }
 
 fn subtitle(item: &MediaItem) -> Option<String> {
     if item.kind == "episode" {
@@ -225,9 +195,7 @@ fn subtitle(item: &MediaItem) -> Option<String> {
             (Some(show), _, _) => show.to_string(),
             _ => "TV".to_string(),
         })
-    } else {
-        item.year.map(|year| year.to_string())
-    }
+    } else { item.year.map(|year| year.to_string()) }
 }
 
 fn build_row(channel: LiveChannel, media: &[MediaItem], playlists: &[Playlist], now: i64, horizon_seconds: i64) -> GuideChannel {
@@ -283,6 +251,45 @@ pub fn guide(root: &Path, user_id: &str, media: &[MediaItem], playlists: &[Playl
     Ok(channels.into_iter().map(|channel| build_row(channel, media, playlists, timestamp, DEFAULT_HORIZON_SECONDS)).collect())
 }
 
+fn enriched_user_media(state: &crate::app_state::AppState, user_id: &str) -> Result<Vec<MediaItem>, String> {
+    if !database::user_exists(&state.database_path, user_id) { return Err("Unknown Onyx user".into()); }
+    let mut items = database::load_library_for_user(&state.database_path, user_id, false)?;
+    metadata::enrich_media(&state.database_path, &mut items)?;
+    metadata_view::canonicalize(&state.database_path, &mut items)?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn live_channels_list(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<LiveChannel>, String> {
+    if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
+    list(&state.provider_path, &user_id)
+}
+
+#[tauri::command]
+pub fn live_channels_save(user_id: String, input: LiveChannelInput, state: TauriState<'_, Shared>) -> Result<Vec<LiveChannel>, String> {
+    if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
+    save(&state.provider_path, &user_id, input)
+}
+
+#[tauri::command]
+pub fn live_channels_delete(user_id: String, channel_id: String, state: TauriState<'_, Shared>) -> Result<Vec<LiveChannel>, String> {
+    if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
+    delete(&state.provider_path, &user_id, &channel_id)
+}
+
+#[tauri::command]
+pub fn live_channels_set_artwork(user_id: String, channel_id: String, path: String, state: TauriState<'_, Shared>) -> Result<Vec<LiveChannel>, String> {
+    if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
+    set_artwork(&state.provider_path, &user_id, &channel_id, Path::new(&path))
+}
+
+#[tauri::command]
+pub fn live_channels_guide(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<GuideChannel>, String> {
+    let media = enriched_user_media(&state, &user_id)?;
+    let playlists = database::list_playlists(&state.database_path, &user_id)?;
+    guide(&state.provider_path, &user_id, &media, &playlists, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,7 +308,7 @@ mod tests {
         let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
         let items = vec![media("a", 600, 1), media("b", 600, 2), media("c", 600, 3)];
         let row = build_row(channel, &items, &[], 2_200, 3_600);
-        assert_eq!(row.current.unwrap().media_id, "c");
+        assert_eq!(row.current.as_ref().unwrap().media_id, "c");
         assert_eq!(row.programs[0].offset_seconds, 0);
         let later = build_row(row.channel, &items, &[], 2_500, 3_600);
         assert_eq!(later.current.unwrap().media_id, "c");

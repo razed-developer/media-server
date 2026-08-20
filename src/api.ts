@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AuthStatus, MediaItem, ServerStatus } from './types';
+export interface IdentityInput { title?:string; year?:number; kind?:'movie'|'episode'; showTitle?:string; season?:number; episode?:number; }
 export const isTauriDesktop=()=>Boolean((window as Window&{__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__);
 export const serverBaseUrl=()=>isTauriDesktop()?'http://127.0.0.1:8765':'';
 export const resolveMediaUrl=(url?:string|null)=>{if(!url)return undefined;if(/^https?:\/\//i.test(url))return url;return `${serverBaseUrl()}${url.startsWith('/')?url:`/${url}`}`;};
@@ -18,3 +19,6 @@ export async function setTvPath(path:string):Promise<void>{if(!isTauriDesktop())
 export async function setAccessPassword(password:string):Promise<void>{if(!isTauriDesktop())throw new Error('Access passwords are managed from the desktop server app.');await invoke('set_access_password',{password});}
 export async function clearAccessPassword():Promise<void>{if(!isTauriDesktop())throw new Error('Access passwords are managed from the desktop server app.');await invoke('clear_access_password');}
 export async function clearThumbnailCache():Promise<void>{if(!isTauriDesktop())throw new Error('Artwork cache is managed from the desktop server app.');await invoke('clear_thumbnail_cache');}
+export async function identifyItem(id:string,identity:IdentityInput):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');return invoke<MediaItem[]>('identify_item',{id,identity});}
+export async function identifyShow(id:string,showTitle:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');return invoke<MediaItem[]>('identify_show',{id,showTitle});}
+export async function resetIdentification(id:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');return invoke<MediaItem[]>('reset_identification',{id});}

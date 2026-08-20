@@ -31,7 +31,6 @@ pub struct MediaItem {
     #[serde(default)] pub thumbnail_url: Option<String>,
     pub subtitles: Vec<SubtitleTrack>,
     pub progress_seconds: u64,
-    #[serde(default)] pub last_watched_at: Option<u64>,
     pub duration_seconds: Option<u64>,
     pub container: Option<String>,
     pub video_codec: Option<String>,
@@ -39,6 +38,8 @@ pub struct MediaItem {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub playback_mode: String,
+    #[serde(default)] pub added_at: Option<i64>,
+    #[serde(default)] pub last_watched_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,10 +52,32 @@ pub struct UserProfile {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UserPreferences {
+    pub theme: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Playlist {
     pub id: String,
     pub name: String,
     pub media_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsEntry {
+    pub label: String,
+    pub seconds: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsSummary {
+    pub total_seconds: u64,
+    pub movie_seconds: u64,
+    pub tv_seconds: u64,
+    pub shows: Vec<AnalyticsEntry>,
 }
 
 #[derive(Debug, Default)]

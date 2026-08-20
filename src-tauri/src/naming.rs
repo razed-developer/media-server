@@ -48,7 +48,8 @@ pub fn parse_movie(path: &Path) -> ParsedName {
 fn parse_episode_filename(path: &Path) -> Option<ParsedName> {
     let raw = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled");
     let patterns = [
-        r"(?i)^(.*?)[ ._-]+S(\d{1,2})E(\d{1,3})(?:[-E](\d{1,3}))?[ ._-]*(.*)$",
+        // Supports S01E05, S01E05E06, S01E05-E06 and S01E05-06.
+        r"(?i)^(.*?)[ ._-]+S(\d{1,2})E(\d{1,3})(?:[ ._-]?E?(\d{1,3}))?[ ._-]*(.*)$",
         r"(?i)^(.*?)[ ._-]+(\d{1,2})x(\d{1,3})(?:-(\d{1,3}))?[ ._-]*(.*)$",
     ];
 

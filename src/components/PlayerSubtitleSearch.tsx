@@ -5,7 +5,7 @@ import { listMedia, resolveMediaUrl } from '../api';
 import type { MediaItem, SubtitleTrack } from '../types';
 import { SubtitleFinder } from './SubtitleFinder';
 
-function absolute(url?:string|null){if(!url)return'';try{return new URL(resolveMediaUrl(url),window.location.href).href}catch{return resolveMediaUrl(url)??''}}
+function absolute(url?:string|null){if(!url)return'';const resolved=resolveMediaUrl(url);if(!resolved)return'';try{return new URL(resolved,window.location.href).href}catch{return resolved}}
 
 export function PlayerSubtitleSearch(){
  const[video,setVideo]=useState<HTMLVideoElement|null>(null);const[toolbar,setToolbar]=useState<HTMLElement|null>(null);const[item,setItem]=useState<MediaItem|null>(null);const[open,setOpen]=useState(false);

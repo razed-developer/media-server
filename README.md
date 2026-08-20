@@ -1,16 +1,13 @@
 # Onyx
 
-Onyx is a deliberately simple Tauri home media server focused on movies and television, with an optional, compartmentalized iBroadcast music module. One running desktop instance manages the server and exposes the same viewing interface to browsers on the network.
+Onyx is a deliberately simple Tauri home media server focused on movies and television. One running desktop instance manages the library and serves the same interface to browsers on the network.
 
 ## Current features
 
-- First-run setup wizard for users, themes, media folders and optional iBroadcast accounts
 - Home screen with **Continue Watching**, **Recently Added Shows**, and **Recently Added Movies**
 - Separate Movies and TV library folders
 - TV hierarchy: **TV → Show → By season / All episodes**
-- Optional **Music** section backed by iBroadcast
-- Music browsing/search by artist, album, artist + album, track and playlist
-- User profiles with individual playback position, history, hidden media, playlists, themes, analytics and iBroadcast connection
+- User profiles with individual playback position, history, hidden media, playlists and themes
 - Watched indicators for movies, episodes, seasons and entire shows
 - Small per-user progress bars beneath media
 - Resume from saved position; when less than 10% remains Onyx asks whether to continue or restart
@@ -18,7 +15,7 @@ Onyx is a deliberately simple Tauri home media server focused on movies and tele
 - Per-user analytics for total time, movies, TV and individual TV shows
 - Recursive media scanning and filename/folder TV recognition
 - Persistent manual identification corrections
-- SQLite-backed media state
+- SQLite-backed library state
 - FFprobe inspection when available
 - Direct Play / Remux / Transcode playback decisions
 - HTTP range streaming for direct play
@@ -32,36 +29,8 @@ Onyx is a deliberately simple Tauri home media server focused on movies and tele
 - Frameless Tauri window and true fullscreen mode
 - Browser access from other devices on the LAN
 - Optional password-protected browser access using Argon2 and HttpOnly sessions
-- Categorized Settings page for General, Libraries, Users, Appearance, Remote Access, Music and Cache
-
-## First-run setup
-
-On first launch, the desktop app presents a setup wizard. It lets you:
-
-1. review/create Onyx users
-2. choose a theme for each user
-3. attach separate Movie and TV folders
-4. configure the Onyx iBroadcast client ID
-5. optionally connect an iBroadcast account for each Onyx profile
-
-Every option remains editable later under **Settings**.
-
-### Portable mode
-
-Onyx can keep its application state beside the executable rather than in the normal OS application-data directory.
-
-Enable portable data mode by either:
-
-- placing an empty file named `onyx-portable.flag` beside the executable, or
-- launching with `ONYX_PORTABLE=1`
-
-Portable state is stored under:
-
-```text
-OnyxData/
-```
-
-beside the executable. This includes the first-run marker, database, cached artwork and provider cache, so a portable copy has its own setup lifecycle.
+- First-run setup for users, themes, libraries and optional iBroadcast
+- Optional per-profile iBroadcast Music integration
 
 ## Browser access
 
@@ -71,21 +40,21 @@ Onyx listens on port `8765`. The desktop app displays a LAN URL similar to:
 http://192.168.1.123:8765
 ```
 
-During `npm run tauri dev`, browser clients use the Vite development client with same-origin API/media proxies. Packaged builds serve the compiled React UI directly from port `8765`.
+During `npm run tauri dev`, browser clients are redirected to the Vite development client. Packaged builds serve the compiled React UI directly from port `8765`.
 
 ## User profiles
 
-The first profile is **Owner**. Additional profiles can be created under **Settings → Users**.
+The first profile is created as the administrator profile and starts with the name **Owner**, but the display name can be changed during first-run setup or later in Settings.
 
 Each profile stores its own:
 
 - playback position and watch history
 - watched/progress state
 - hidden media
-- Onyx playlists
+- playlists
 - theme
 - viewing analytics
-- optional iBroadcast account/cache
+- optional iBroadcast connection
 
 Profiles currently sit behind the server's shared browser-access password; profile-specific PINs/passwords can be added later.
 
@@ -99,34 +68,14 @@ Resetting watch status removes the saved playback position for the selected movi
 
 Onyx records accumulated viewing time independently from playback position, allowing a user to seek without artificially inflating time watched.
 
-Current breakdowns include total time, movie time, TV time and time by TV show. Genre analytics require reliable metadata and will be added with an online movie/TV metadata provider.
+Current breakdowns include:
 
-## iBroadcast music
+- total time
+- movie time
+- TV time
+- time by TV show
 
-iBroadcast is implemented as a separate provider module rather than being merged into the Movie/TV library.
-
-To use it:
-
-1. create an application from the iBroadcast web player's developer area
-2. enter the resulting client ID under **Settings → Music**
-3. choose an Onyx profile
-4. select **Connect iBroadcast**
-5. authorize the displayed device code from a phone or computer
-6. sync the library
-
-The Music page supports:
-
-- Artists
-- Albums
-- artist + album search
-- Tracks
-- iBroadcast Playlists
-- artwork
-- playback through Onyx
-
-Onyx stores iBroadcast OAuth credentials in the operating system credential store. The cached iBroadcast library is kept separately under the provider-data directory for the current Onyx profile. Browser clients never receive the stored OAuth token; audio requests are proxied through Onyx.
-
-The implementation was adapted from the known-working iBroadcast connection in `razed-developer/cherry-rise` and modernized against the current documented iBroadcast OAuth/library/streaming API.
+Genre analytics require reliable genre metadata, so they are deferred until a metadata provider is added.
 
 ## Library layout
 
@@ -167,6 +116,34 @@ ffprobe -version
 ffmpeg -version
 ```
 
+## iBroadcast
+
+iBroadcast is optional and compartmentalized from the movie/TV system. Each Onyx profile may connect a separate iBroadcast account.
+
+When creating an Onyx application in iBroadcast, a square 512×512 PNG logo is included with Onyx at:
+
+```text
+public/onyx-logo-512.png
+```
+
+The first-run iBroadcast step and **Settings → Music** both expose a download link for this logo.
+
+Implementation details are documented in:
+
+```text
+docs/IBROADCAST-INTEGRATION.md
+```
+
+## Portable mode
+
+Place this file beside the executable:
+
+```text
+onyx-portable.flag
+```
+
+or set `ONYX_PORTABLE=1`. Onyx will then keep its database, cache, settings and provider state under an `OnyxData` folder beside the executable rather than using the normal OS application-data directory.
+
 ## Development
 
 ```bash
@@ -184,15 +161,10 @@ npm run tauri build
 
 **Do not directly port-forward port 8765 to the public internet.** The built-in server is plain HTTP. For outside-network access, use a private encrypted network such as Tailscale or a correctly configured HTTPS reverse proxy.
 
-## Validation
-
-Windows CI builds the React client, runs `cargo check`, and runs the Rust test suite. The first iBroadcast/setup/settings implementation passes all three stages.
-
 ## Near-term roadmap
 
-- validate iBroadcast device authorization and real-library parsing against a connected account
 - HLS/segmented transcoding for better seeking and remote quality selection
-- online movie/TV metadata matching and artwork
+- online metadata matching/artwork provider
 - genre-aware analytics
 - automatic filesystem watching/rescans
 - profile PINs/passwords if desired

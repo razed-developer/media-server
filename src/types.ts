@@ -6,6 +6,7 @@ export interface MediaItem {
   path:string; streamUrl:string; posterUrl?:string; backdropUrl?:string; thumbnailUrl?:string; subtitles:SubtitleTrack[];
   progressSeconds:number; durationSeconds?:number; container?:string; videoCodec?:string; audioCodec?:string; width?:number; height?:number; playbackMode:PlaybackMode;
 }
+export interface UserProfile { id:string; name:string; isAdmin:boolean; }
 export interface Playlist { id:string; name:string; mediaIds:string[]; }
 export interface ServerStatus { running:boolean; localUrl:string; libraryPath?:string; moviePath?:string; tvPath?:string; itemCount:number; ffprobeAvailable:boolean; ffmpegAvailable:boolean; accessPasswordSet?:boolean; artworkCacheBytes?:number; }
 export interface AuthStatus { required:boolean; authenticated:boolean; }

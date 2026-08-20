@@ -27,17 +27,13 @@ pub const PORT: u16 = 8765;
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("Only HTTP and HTTPS links can be opened".into());
-    }
-
+    if !matches!(parsed.scheme(), "http" | "https") { return Err("Only HTTP and HTTPS links can be opened".into()); }
     #[cfg(target_os = "windows")]
     let result = Command::new("rundll32").args(["url.dll,FileProtocolHandler", parsed.as_str()]).spawn();
     #[cfg(target_os = "macos")]
     let result = Command::new("open").arg(parsed.as_str()).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = Command::new("xdg-open").arg(parsed.as_str()).spawn();
-
     result.map(|_| ()).map_err(|error| format!("Could not open the link: {error}"))
 }
 
@@ -96,7 +92,9 @@ pub fn run() {
             user_features::user_avatars, user_features::user_avatar_set_builtin,
             user_features::user_avatar_set_custom, user_features::user_reactions,
             user_features::user_reaction_set, user_features::user_recommendation_send,
-            user_features::user_recommendations, user_features::user_recommendation_mark_read
+            user_features::user_recommendations, user_features::user_recommendation_mark_read,
+            user_features::user_wishlist_search, user_features::user_wishlist_add,
+            user_features::user_wishlist_list, user_features::user_wishlist_set_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running Onyx");

@@ -42,6 +42,14 @@ pub struct MediaItem {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UserProfile {
+    pub id: String,
+    pub name: String,
+    pub is_admin: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Playlist {
     pub id: String,
     pub name: String,

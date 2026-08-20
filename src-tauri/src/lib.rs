@@ -1,5 +1,7 @@
+mod activity;
 mod app_state;
 mod artwork;
+mod assets;
 mod commands;
 mod database;
 mod ibroadcast;
@@ -25,10 +27,12 @@ pub fn run() {
     let database_path = data_dir.join("library.db");
     let artwork_path = data_dir.join("artwork");
     let provider_path = data_dir.join("providers");
-    if let Err(error) = database::init(&database_path) { eprintln!("Database initialization failed: {error}"); }
-    if let Err(error) = metadata::init(&database_path) { eprintln!("Metadata initialization failed: {error}"); }
+    activity::info("Server", format!("Onyx starting with data directory {}", data_dir.display()));
+    if let Err(error) = database::init(&database_path) { activity::error("Database", format!("Database initialization failed: {error}")); }
+    if let Err(error) = metadata::init(&database_path) { activity::error("Metadata", format!("Metadata initialization failed: {error}")); }
     let initial_media = database::load_library(&database_path).unwrap_or_default();
     let _ = metadata::reconcile_local_entities(&database_path, &initial_media);
+    activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
         settings: Arc::new(RwLock::new(load_settings(&settings_path))),
@@ -41,11 +45,13 @@ pub fn run() {
         .setup(move |app| {
             let server_state = shared.clone();
             let web_root = if cfg!(debug_assertions) { None } else { app.path().resolve("web", BaseDirectory::Resource).ok() };
+            activity::info("Server", format!("Starting browser server on port {PORT}"));
             tauri::async_runtime::spawn(async move { server::start(server_state, PORT, web_root).await; });
             if let Some(window) = app.get_webview_window("main") { let _ = window.set_title("Onyx"); }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            activity::activity_entries, activity::clear_activity, assets::save_ibroadcast_logo,
             commands::setup_status, commands::complete_setup, commands::set_ibroadcast_client_id,
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::set_access_password, commands::clear_access_password,

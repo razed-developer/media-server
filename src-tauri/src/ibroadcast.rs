@@ -1,4 +1,4 @@
-use crate::Shared;
+use crate::{activity, Shared};
 use chrono::Utc;
 use keyring::Entry;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, RANGE, USER_AGENT};
@@ -175,7 +175,12 @@ async fn refresh_if_needed(state: &crate::app_state::AppState, user_id: &str) ->
     let id = client_id(state)?;
     let response = http()?.post(format!("{OAUTH_BASE}/token"))
         .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-        .form(&[("grant_type", "refresh_token"), ("refresh_token", refresh.as_str()), ("client_id", id.as_str())])
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh.as_str()),
+            ("client_id", id.as_str()),
+            ("redirect_uri", crate::ibroadcast_oauth::REDIRECT_URI),
+        ])
         .send().await.map_err(|e| e.to_string())?;
     let status = response.status();
     let value: Value = response.json().await.map_err(|e| e.to_string())?;
@@ -258,11 +263,12 @@ fn provider_user_label(value: &Value) -> Option<String> {
 }
 
 fn provider_user_id(value: &Value) -> Option<String> {
-    let user = value.get("user").cloned().unwrap_or_else(|| json!({}));
+    let user = value.get("user").or_else(|| value.get("status").and_then(|s| s.get("user"))).cloned().unwrap_or_else(|| json!({}));
     for key in ["user_id", "userid", "id"] {
         if let Some(v) = user.get(key).or_else(|| value.get("status").and_then(|s| s.get(key))) {
             if let Some(s) = v.as_str() { return Some(s.to_string()); }
             if let Some(n) = v.as_i64() { return Some(n.to_string()); }
+            if let Some(n) = v.as_u64() { return Some(n.to_string()); }
         }
     }
     None
@@ -270,12 +276,19 @@ fn provider_user_id(value: &Value) -> Option<String> {
 
 pub async fn sync_library(state: &crate::app_state::AppState, user_id: &str) -> Result<IbLibrary, String> {
     let token = refresh_if_needed(state, user_id).await?;
+    activity::info("iBroadcast", format!("Syncing music library for profile {user_id}"));
     let status = api_post(&token.access_token, &format!("{API_BASE}/status"), "status").await?;
     let library_response = api_post(&token.access_token, LIBRARY_BASE, "library").await?;
     let mut library = parse_library(&library_response, &status);
     library.synced_at = Some(Utc::now().timestamp());
     library.provider_user_id = provider_user_id(&status);
-    library.streaming_server = status.get("settings").and_then(|s| s.get("streaming_server")).and_then(Value::as_str).map(str::to_string).or_else(|| Some(DEFAULT_STREAMING_BASE.to_string()));
+    library.streaming_server = status.get("settings")
+        .or_else(|| status.get("status").and_then(|s| s.get("settings")))
+        .and_then(|s| s.get("streaming_server")).and_then(Value::as_str).map(str::to_string)
+        .or_else(|| status.get("streaming_server").and_then(Value::as_str).map(str::to_string))
+        .or_else(|| Some(DEFAULT_STREAMING_BASE.to_string()));
+    let missing_paths = library.tracks.iter().filter(|track| track.source_path.is_none()).count();
+    activity::info("iBroadcast", format!("Music library synced: {} tracks, {} albums, {} artists; {} tracks missing stream paths", library.tracks.len(), library.albums.len(), library.artists.len(), missing_paths));
     save_library(&state.provider_path, user_id, &library)?;
     Ok(library)
 }
@@ -296,15 +309,18 @@ pub fn disconnect(state: &crate::app_state::AppState, user_id: &str) -> Result<(
 
 pub async fn stream_response(state: Shared, user_id: String, track_id: String, range: Option<String>) -> Result<reqwest::Response, String> {
     let token = refresh_if_needed(&state, &user_id).await?;
-    let library = load_library(&state.provider_path, &user_id)?;
+    let mut library = load_library(&state.provider_path, &user_id)?;
+    let needs_resync = library.tracks.iter().find(|t| t.id == track_id).and_then(|track| track.source_path.as_ref()).is_none()
+        || library.provider_user_id.is_none() || library.streaming_server.is_none();
+    if needs_resync {
+        activity::info("iBroadcast", format!("Refreshing cached library before streaming track {track_id}"));
+        library = sync_library(&state, &user_id).await?;
+    }
     let track = library.tracks.iter().find(|t| t.id == track_id).ok_or("Track not found in cached iBroadcast library")?;
-    let source = track.source_path.as_ref().ok_or("Track has no iBroadcast streaming path")?;
-    let user = library.provider_user_id.as_ref().ok_or("Cached library does not include provider user ID; sync iBroadcast again")?;
+    let source = track.source_path.as_ref().ok_or("Track has no iBroadcast streaming path after a fresh sync")?;
+    let user = library.provider_user_id.as_ref().ok_or("iBroadcast status did not provide a user ID")?;
     let server = library.streaming_server.as_deref().unwrap_or(DEFAULT_STREAMING_BASE).trim_end_matches('/');
-    let source = if source.starts_with("96/") || source.starts_with("128/") || source.starts_with("192/") || source.starts_with("256/") || source.starts_with("320/") || source.starts_with("orig/") {
-        let mut parts = source.splitn(2, '/'); let _ = parts.next(); format!("320/{}", parts.next().unwrap_or(source))
-    } else { format!("320/{}", source.trim_start_matches('/')) };
-    let base = format!("{server}/{source}");
+    let base = format!("{server}/{}", source.trim_start_matches('/'));
     let url = reqwest::Url::parse_with_params(&base, &[
         ("Expires", Utc::now().timestamp_millis().to_string()),
         ("Signature", token.access_token.clone()),
@@ -313,10 +329,30 @@ pub async fn stream_response(state: Shared, user_id: String, track_id: String, r
         ("platform", APP_CLIENT.to_string()),
         ("version", APP_VERSION.to_string()),
     ]).map_err(|e| e.to_string())?;
+    activity::info("iBroadcast", format!("Requesting audio for “{}” from stream path {}", track.title, source));
     let client = http()?;
     let mut request = client.get(url);
     if let Some(value) = range { request = request.header(RANGE, value); }
-    request.send().await.map_err(|e| e.to_string())
+    let response = request.send().await.map_err(|e| {
+        activity::error("iBroadcast", format!("Stream request failed for track {track_id}: {e}"));
+        e.to_string()
+    })?;
+    let status = response.status();
+    let content_type = response.headers().get(CONTENT_TYPE).and_then(|value| value.to_str().ok()).unwrap_or("").to_string();
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+        let message = format!("iBroadcast stream failed ({status}, {content_type}): {}", detail.chars().take(300).collect::<String>());
+        activity::error("iBroadcast", message.clone());
+        return Err(message);
+    }
+    if content_type.starts_with("text/") || content_type.contains("json") || content_type.contains("html") {
+        let detail = response.text().await.unwrap_or_default();
+        let message = format!("iBroadcast returned non-audio content ({content_type}): {}", detail.chars().take(300).collect::<String>());
+        activity::error("iBroadcast", message.clone());
+        return Err(message);
+    }
+    activity::info("iBroadcast", format!("Audio stream ready for “{}” ({status}, {})", track.title, if content_type.is_empty(){"content type not supplied"}else{&content_type}));
+    Ok(response)
 }
 
 fn map_index(section: &Value, names: &[&str]) -> Option<usize> {
@@ -361,9 +397,9 @@ fn parse_library(response: &Value, status: &Value) -> IbLibrary {
     let track_album_idx = map_index(tracks_section, &["album_id", "albumId"]);
     let duration_idx = map_index(tracks_section, &["length", "duration"]);
     let art_idx = map_index(tracks_section, &["artwork_id", "artworkId"]);
-    let file_idx = map_index(tracks_section, &["file", "url", "path", "location"]);
+    let file_idx = map_index(tracks_section, &["file", "url", "path", "location"]).unwrap_or(16);
     let mut tracks=Vec::new();
-    if let Some(obj)=tracks_section.as_object(){for(id,raw)in obj{if id=="map"{continue}let arr=raw.as_array();let title=value_text(arr.and_then(|a|a.get(title_idx)),"Unknown Track");let album_id=track_album_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i))));let artist_id=track_artist_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i)))).or_else(||album_id.as_ref().and_then(|a|album_artist_ids.get(a).cloned()));let artist=artist_id.as_ref().and_then(|a|artist_names.get(a)).cloned().unwrap_or_else(||"Unknown Artist".into());let album=album_id.as_ref().and_then(|a|album_names.get(a)).cloned().unwrap_or_else(||"Unknown Album".into());let duration=duration_idx.and_then(|i|arr.and_then(|a|a.get(i))).and_then(Value::as_u64).unwrap_or(0);let art=art_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i))));let source=file_idx.and_then(|i|arr.and_then(|a|a.get(i))).and_then(Value::as_str).map(str::to_string);tracks.push(IbTrack{id:id.clone(),title,artist,artist_id,album,album_id,duration_seconds:duration,artwork_url:artwork_url(artwork_base,art),source_path:source});}}
+    if let Some(obj)=tracks_section.as_object(){for(id,raw)in obj{if id=="map"{continue}let arr=raw.as_array();let title=value_text(arr.and_then(|a|a.get(title_idx)),"Unknown Track");let album_id=track_album_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i))));let artist_id=track_artist_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i)))).or_else(||album_id.as_ref().and_then(|a|album_artist_ids.get(a).cloned()));let artist=artist_id.as_ref().and_then(|a|artist_names.get(a)).cloned().unwrap_or_else(||"Unknown Artist".into());let album=album_id.as_ref().and_then(|a|album_names.get(a)).cloned().unwrap_or_else(||"Unknown Album".into());let duration=duration_idx.and_then(|i|arr.and_then(|a|a.get(i))).and_then(Value::as_u64).unwrap_or(0);let art=art_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i))));let source=arr.and_then(|a|a.get(file_idx)).and_then(Value::as_str).map(str::to_string);tracks.push(IbTrack{id:id.clone(),title,artist,artist_id,album,album_id,duration_seconds:duration,artwork_url:artwork_url(artwork_base,art),source_path:source});}}
 
     let playlist_name_idx=map_index(playlists_section,&["name","title"]).unwrap_or(0);let playlist_tracks_idx=map_index(playlists_section,&["tracks"]).unwrap_or(1);let playlist_art_idx=map_index(playlists_section,&["artwork_id","artworkId"]);let mut playlists=Vec::new();if let Some(obj)=playlists_section.as_object(){for(id,raw)in obj{if id=="map"{continue}let arr=raw.as_array();let name=value_text(arr.and_then(|a|a.get(playlist_name_idx)),"Playlist");let track_ids=value_ids(arr.and_then(|a|a.get(playlist_tracks_idx)));let art=playlist_art_idx.and_then(|i|arr.and_then(|a|value_id(a.get(i))));playlists.push(IbPlaylist{id:id.clone(),name,track_ids,artwork_url:artwork_url(artwork_base,art)});}}
 

@@ -15,12 +15,18 @@ export function LiveChannelsSettings(){
   const[orderMode,setOrderMode]=useState<LiveChannelOrder>('sequential');
   const[error,setError]=useState<string|null>(null);
   const[busy,setBusy]=useState(false);
+  const[criteriaBusy,setCriteriaBusy]=useState(true);
 
   const refresh=async()=>{
+    setCriteriaBusy(true);
     try{
-      const[c,m,p]=await Promise.all([listLiveChannels(),listMedia(),listPlaylists()]);
-      setChannels(c);setMedia(m);setPlaylists(p);setError(null);
-    }catch(cause){setError(String(cause))}
+      // Channel definitions are tiny and should appear immediately. Do not make
+      // them wait for the much larger media library/metadata load.
+      const saved=await listLiveChannels();
+      setChannels(saved);setError(null);
+      const[m,p]=await Promise.all([listMedia(),listPlaylists()]);
+      setMedia(m);setPlaylists(p);
+    }catch(cause){setError(String(cause))}finally{setCriteriaBusy(false)}
   };
   useEffect(()=>{void refresh()},[]);
 
@@ -37,6 +43,7 @@ export function LiveChannelsSettings(){
     if(!name.trim()||!criteriaValue||!desktop)return;
     setBusy(true);setError(null);
     try{
+      // Update the visible list directly from the lightweight save response.
       setChannels(await saveLiveChannel({id:editingId,name:name.trim(),criteriaType,criteriaValue,orderMode}));
       resetBuilder();
     }catch(cause){setError(String(cause))}finally{setBusy(false)}
@@ -64,7 +71,7 @@ export function LiveChannelsSettings(){
       <div className="live-builder-grid">
         <label><span>Channel name</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Comedy Central"/></label>
         <label><span>Content</span><select value={criteriaType} onChange={event=>setCriteriaType(event.target.value as LiveChannelCriteria)}><option value="show">TV show</option><option value="genre">Genre</option><option value="playlist">Playlist</option></select></label>
-        <label><span>{criteriaType==='show'?'Show':criteriaType==='genre'?'Genre':'Playlist'}</span><select value={criteriaValue} onChange={event=>setCriteriaValue(event.target.value)} disabled={!options.length}>{options.length?options.map(value=><option value={value} key={value}>{optionLabel(value)}</option>):<option value="">No matching content</option>}</select></label>
+        <label><span>{criteriaType==='show'?'Show':criteriaType==='genre'?'Genre':'Playlist'}</span><select value={criteriaValue} onChange={event=>setCriteriaValue(event.target.value)} disabled={!options.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:options.length?options.map(value=><option value={value} key={value}>{optionLabel(value)}</option>):<option value="">No matching content</option>}</select></label>
         <label><span>Playback order</span><select value={orderMode} onChange={event=>setOrderMode(event.target.value as LiveChannelOrder)}><option value="sequential">In order</option><option value="shuffle">Shuffled</option></select></label>
       </div>
       <div className="metadata-actions"><button className="primary" disabled={busy||!name.trim()||!criteriaValue} onClick={()=>void saveChannel()}>{editingId?<Pencil size={17}/>:<Plus size={17}/>} {busy?'Saving…':editingId?'Save channel':'Create channel'}</button>{editingId&&<button onClick={resetBuilder}><X size={16}/>Cancel edit</button>}</div>

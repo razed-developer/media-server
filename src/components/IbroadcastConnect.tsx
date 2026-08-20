@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, Link2, LoaderCircle, RefreshCw, Unplug } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { disconnectIbroadcast, getIbroadcastStatus, isTauriDesktop, pollIbroadcastDeviceAuth, startIbroadcastDeviceAuth, syncIbroadcast } from '../api';
+import { disconnectIbroadcast, getIbroadcastStatus, isTauriDesktop, startIbroadcastDeviceAuth, syncIbroadcast } from '../api';
+import { pollIbroadcastDeviceAuthCompat } from '../ibroadcastCompatApi';
 import type { IbConnectionStatus, IbDeviceCode } from '../types';
 
 export function IbroadcastConnect({ onConnected }: { onConnected?: () => void }) {
@@ -51,7 +52,7 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
 
       const poll = async () => {
         try {
-          const result = await pollIbroadcastDeviceAuth(next.deviceCode);
+          const result = await pollIbroadcastDeviceAuthCompat(next.deviceCode);
           if (!result.connected) return;
           stopPolling();
           setDevice(null);
@@ -66,8 +67,6 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
             setNotice(`iBroadcast connected, but the initial library sync reported a problem. You can use Sync to retry. ${String(syncError)}`);
           }
         } catch (cause) {
-          // A token may already have been stored even if a follow-up provider request failed.
-          // Check the actual connection state before reporting the authorization as failed.
           try {
             const current = await getIbroadcastStatus();
             setStatus(current);

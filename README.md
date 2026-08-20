@@ -91,7 +91,9 @@ TMDB is the current primary optional online metadata provider. Configure it from
 Settings → Metadata → TMDB
 ```
 
-Paste a TMDB **API Read Access Token**, then use **Save & test**. The token is stored in the operating-system credential store and is never exposed to browser clients.
+For a personal/non-commercial Onyx installation, create a TMDB developer API credential in your own TMDB account and paste its **API Read Access Token** into Onyx. The token is stored in the operating-system credential store and is never exposed to browser clients. Do not commit a TMDB API key or read token to the public Onyx repository.
+
+TMDB's developer API is free for non-commercial use subject to TMDB's terms and attribution requirements. Anyone distributing or running Onyx should use their own TMDB credential rather than a credential embedded in the open-source application. Commercial use requires the appropriate arrangement with TMDB.
 
 When configured, Onyx can populate:
 
@@ -184,15 +186,11 @@ ffmpeg -version
 
 iBroadcast is optional and compartmentalized from the movie/TV system. Each Onyx profile may connect a separate iBroadcast account.
 
-When creating an Onyx application in iBroadcast, a square 512×512 PNG logo is included with Onyx at:
+To create an Onyx developer application, sign in to the iBroadcast web player, open **Apps → developer**, create an application named Onyx, and upload a **128 × 128 PNG** application icon. Copy the issued Client ID into **Settings → Music → Onyx iBroadcast client ID**, save it, and then connect the desired Onyx profile using the device authorization flow.
 
-```text
-public/onyx-logo-512.png
-```
+The Client ID is server-wide, while each Onyx profile's OAuth connection is separate. Credentials and refresh tokens must not be committed to the repository.
 
-The first-run iBroadcast step and **Settings → Music** both expose a download link for this logo.
-
-Implementation details are documented in:
+Detailed setup and architecture notes are documented in:
 
 ```text
 docs/IBROADCAST-INTEGRATION.md
@@ -227,6 +225,7 @@ npm run tauri build
 
 ## Near-term roadmap
 
+- provide the correctly sized 128 × 128 iBroadcast developer-app PNG directly in setup/settings
 - real-library validation and tuning of metadata confidence scoring
 - optional TheTVDB secondary provider / alternate episode ordering
 - cast/crew presentation and richer movie/show detail screens

@@ -5,6 +5,7 @@ mod database;
 mod ibroadcast;
 mod library;
 mod metadata;
+mod metadata_view;
 mod models;
 mod naming;
 mod probe;

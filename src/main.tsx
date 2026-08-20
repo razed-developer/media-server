@@ -14,6 +14,7 @@ import './liveChannels.css';
 import './fullscreen.css';
 import './scrollEnhancements.css';
 import './onyxDialogs.css';
+import './libraryRoots.css';
 import './remote.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

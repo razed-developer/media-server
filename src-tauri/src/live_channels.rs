@@ -253,9 +253,17 @@ pub fn guide(root: &Path, user_id: &str, media: &[MediaItem], playlists: &[Playl
 
 fn enriched_user_media(state: &crate::app_state::AppState, user_id: &str) -> Result<Vec<MediaItem>, String> {
     if !database::user_exists(&state.database_path, user_id) { return Err("Unknown Onyx user".into()); }
-    let mut items = database::load_library_for_user(&state.database_path, user_id, false)?;
+    // The guide only needs library identity/metadata, not per-user playback progress.
+    // Reuse Onyx's already-loaded in-memory library instead of re-reading and
+    // deserializing every media row from SQLite on every guide refresh.
+    let mut items = state.media.read().map_err(|_| "Media lock poisoned")?.clone();
     metadata::enrich_media(&state.database_path, &mut items)?;
     metadata_view::canonicalize(&state.database_path, &mut items)?;
+    let (hidden_media, hidden_shows) = database::hidden_sets(&state.database_path, user_id)?;
+    items.retain(|item| {
+        !hidden_media.contains(&item.id)
+            && !item.show_title.as_ref().is_some_and(|show| hidden_shows.contains(show))
+    });
     Ok(items)
 }
 
@@ -272,7 +280,7 @@ pub fn live_channels_save(user_id: String, input: LiveChannelInput, state: Tauri
 }
 
 #[tauri::command]
-pub fn live_channels_delete(user_id: String, channel_id: String, state: TauriState<'_, Shared>) -> Result<Vec<LiveChannel>, String> {
+pub fn live_channels_delete(user_id: String, state: TauriState<'_, Shared>, channel_id: String) -> Result<Vec<LiveChannel>, String> {
     if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
     delete(&state.provider_path, &user_id, &channel_id)
 }
@@ -285,9 +293,12 @@ pub fn live_channels_set_artwork(user_id: String, channel_id: String, path: Stri
 
 #[tauri::command]
 pub fn live_channels_guide(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<GuideChannel>, String> {
+    activity::info("Live TV", "Building live guide");
     let media = enriched_user_media(&state, &user_id)?;
     let playlists = database::list_playlists(&state.database_path, &user_id)?;
-    guide(&state.provider_path, &user_id, &media, &playlists, None)
+    let rows = guide(&state.provider_path, &user_id, &media, &playlists, None)?;
+    activity::info("Live TV", format!("Live guide ready: {} channels", rows.len()));
+    Ok(rows)
 }
 
 #[cfg(test)]

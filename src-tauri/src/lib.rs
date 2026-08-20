@@ -6,6 +6,7 @@ mod commands;
 mod database;
 mod ibroadcast;
 mod library;
+mod live_channels;
 mod metadata;
 mod metadata_view;
 mod models;
@@ -65,7 +66,10 @@ pub fn run() {
             commands::ibroadcast_device_poll, commands::ibroadcast_sync, commands::ibroadcast_library,
             commands::ibroadcast_disconnect, commands::metadata_provider_status,
             commands::set_tmdb_token, commands::clear_tmdb_token, commands::test_tmdb,
-            commands::metadata_search, commands::metadata_apply_match, commands::metadata_auto_match_all
+            commands::metadata_search, commands::metadata_apply_match, commands::metadata_auto_match_all,
+            live_channels::live_channels_list, live_channels::live_channels_save,
+            live_channels::live_channels_delete, live_channels::live_channels_set_artwork,
+            live_channels::live_channels_guide
         ])
         .run(tauri::generate_context!())
         .expect("error while running Onyx");

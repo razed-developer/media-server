@@ -1,12 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AnalyticsSummary, AuthStatus, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, MediaItem, Playlist, ServerStatus, SetupStatus, ThemeName, UserPreferences, UserProfile } from './types';
+import type { AnalyticsSummary, AuthStatus, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, ServerStatus, SetupStatus, ThemeName, UserPreferences, UserProfile } from './types';
 export interface IdentityInput { title?:string; year?:number; kind?:'movie'|'episode'; showTitle?:string; season?:number; episode?:number; }
 export const isTauriDesktop=()=>Boolean((window as Window&{__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__);
 export const serverBaseUrl=()=>isTauriDesktop()?'http://127.0.0.1:8765':'';
 export const resolveMediaUrl=(url?:string|null)=>{if(!url)return undefined;if(/^https?:\/\//i.test(url))return url;return `${serverBaseUrl()}${url.startsWith('/')?url:`/${url}`}`;};
 let activeUserId=localStorage.getItem('onyx-user')||localStorage.getItem('home-media-user')||'owner';
-export const getActiveUserId=()=>activeUserId;
-export const setActiveUserId=(id:string)=>{activeUserId=id;localStorage.setItem('onyx-user',id);};
+export const getActiveUserId=()=>activeUserId;export const setActiveUserId=(id:string)=>{activeUserId=id;localStorage.setItem('onyx-user',id);};
 const userHeaders=(extra:Record<string,string>={})=>({'x-home-media-user':activeUserId,...extra});
 const browserFetch=(input:string,init?:RequestInit)=>fetch(input,{...init,credentials:'include',headers:{...userHeaders(),...((init?.headers as Record<string,string>|undefined)??{})}});
 async function json<T>(response:Response,message:string):Promise<T>{if(!response.ok){const text=await response.text().catch(()=>"");throw new Error(text||`${message} (${response.status})`);}return response.json();}
@@ -44,6 +43,13 @@ export async function clearThumbnailCache():Promise<void>{if(!isTauriDesktop())t
 export async function identifyItem(id:string,identity:IdentityInput):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');await invoke<MediaItem[]>('identify_item',{id,identity});return listMedia();}
 export async function identifyShow(id:string,showTitle:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');await invoke<MediaItem[]>('identify_show',{id,showTitle});return listMedia();}
 export async function resetIdentification(id:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');await invoke<MediaItem[]>('reset_identification',{id});return listMedia();}
+export async function metadataProviderStatus():Promise<MetadataProviderStatus[]>{if(!isTauriDesktop())return[];return invoke<MetadataProviderStatus[]>('metadata_provider_status');}
+export async function setTmdbToken(token:string):Promise<void>{if(!isTauriDesktop())throw new Error('Metadata credentials are managed from the desktop server.');await invoke('set_tmdb_token',{token});}
+export async function clearTmdbToken():Promise<void>{if(!isTauriDesktop())throw new Error('Metadata credentials are managed from the desktop server.');await invoke('clear_tmdb_token');}
+export async function testTmdb():Promise<void>{if(!isTauriDesktop())throw new Error('Metadata providers are managed from the desktop server.');await invoke('test_tmdb');}
+export async function searchMetadata(id:string,query?:string):Promise<MetadataSearchResult[]>{if(!isTauriDesktop())throw new Error('Metadata matching is managed from the desktop server.');return invoke<MetadataSearchResult[]>('metadata_search',{id,query});}
+export async function applyMetadataMatch(id:string,providerId:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Metadata matching is managed from the desktop server.');await invoke<MediaItem[]>('metadata_apply_match',{id,providerId});return listMedia();}
+export async function autoMatchMetadata():Promise<number>{if(!isTauriDesktop())throw new Error('Metadata matching is managed from the desktop server.');return invoke<number>('metadata_auto_match_all');}
 
 export async function getIbroadcastStatus():Promise<IbConnectionStatus>{if(isTauriDesktop())return invoke<IbConnectionStatus>('ibroadcast_status',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/status`),'Could not check iBroadcast');}
 export async function startIbroadcastDeviceAuth():Promise<IbDeviceCode>{if(isTauriDesktop())return invoke<IbDeviceCode>('ibroadcast_device_start');return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/device/start`,{method:'POST'}),'Could not start iBroadcast authorization');}

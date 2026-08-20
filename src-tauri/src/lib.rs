@@ -43,7 +43,8 @@ pub fn run() {
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::set_access_password, commands::clear_access_password,
             commands::scan_library, commands::list_media, commands::save_progress, commands::server_status,
-            commands::clear_thumbnail_cache
+            commands::clear_thumbnail_cache, commands::identify_item, commands::identify_show,
+            commands::reset_identification
         ])
         .run(tauri::generate_context!())
         .expect("error while running Home Media");

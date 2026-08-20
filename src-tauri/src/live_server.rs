@@ -7,7 +7,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use std::{process::Stdio};
+use std::process::Stdio;
 use tokio::process::Command;
 use tokio_util::io::ReaderStream;
 
@@ -51,9 +51,13 @@ async fn play(State(state): State<Shared>, AxumPath((media_id, offset)): AxumPat
     let Some(item) = item else { return StatusCode::NOT_FOUND.into_response(); };
     activity::info("Live TV", format!("Tuning {} at {} seconds", item.title, offset));
 
+    let offset_arg = offset.to_string();
     let mut command = Command::new("ffmpeg");
-    command.kill_on_drop(true)
-        .args(["-hide_banner", "-loglevel", "error", "-ss", &offset.to_string(), "-i"])
+    command
+        .kill_on_drop(true)
+        .args(["-hide_banner", "-loglevel", "error", "-ss"])
+        .arg(&offset_arg)
+        .arg("-i")
         .arg(&item.path)
         .args(["-map", "0:v:0", "-map", "0:a:0?"]);
     if item.playback_mode == "transcode" {

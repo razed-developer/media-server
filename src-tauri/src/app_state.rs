@@ -25,8 +25,19 @@ pub struct AppState {
 
 pub type Shared = Arc<AppState>;
 
-// Keep the original data directory name so existing Home Media installs migrate into Onyx without losing state.
-pub fn app_data_dir() -> PathBuf { dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("home-media") }
+/// Portable mode is enabled by setting ONYX_PORTABLE=1 or placing an
+/// `onyx-portable.flag` file beside the executable. Portable state then lives
+/// in an `OnyxData` folder beside the executable, including the first-run flag.
+pub fn app_data_dir() -> PathBuf {
+    let portable_env = std::env::var("ONYX_PORTABLE").ok().is_some_and(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"));
+    let executable = std::env::current_exe().ok();
+    let portable_flag = executable.as_ref().and_then(|exe| exe.parent()).map(|dir| dir.join("onyx-portable.flag")).is_some_and(|flag| flag.is_file());
+    if portable_env || portable_flag {
+        if let Some(dir) = executable.as_ref().and_then(|exe| exe.parent()) { return dir.join("OnyxData"); }
+    }
+    // Keep the original data directory name so existing Home Media installs migrate into Onyx without losing state.
+    dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("home-media")
+}
 
 pub fn load_settings(path: &Path) -> Settings { fs::read_to_string(path).ok().and_then(|raw| serde_json::from_str(&raw).ok()).unwrap_or_default() }
 

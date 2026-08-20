@@ -45,7 +45,7 @@ pub fn run() {
             commands::setup_status, commands::complete_setup, commands::set_ibroadcast_client_id,
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::set_access_password, commands::clear_access_password,
-            commands::scan_library, commands::list_users, commands::create_user, commands::delete_user,
+            commands::scan_library, commands::list_users, commands::create_user, commands::rename_user, commands::delete_user,
             commands::get_user_preferences, commands::set_user_theme, commands::user_analytics,
             commands::list_media, commands::save_progress, commands::reset_watch_status, commands::set_hidden,
             commands::server_status, commands::clear_thumbnail_cache, commands::identify_item,

@@ -16,11 +16,23 @@ pub struct LiveChannel {
     pub name: String,
     pub criteria_type: String,
     pub criteria_value: String,
+    #[serde(default)]
+    pub criteria_values: Vec<String>,
     pub order_mode: String,
     pub anchor_time: i64,
     pub created_at: i64,
     #[serde(default)]
     pub art_url: Option<String>,
+}
+
+impl LiveChannel {
+    fn selected_values(&self) -> Vec<&str> {
+        if self.criteria_values.is_empty() {
+            if self.criteria_value.trim().is_empty() { Vec::new() } else { vec![self.criteria_value.as_str()] }
+        } else {
+            self.criteria_values.iter().map(String::as_str).collect()
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -29,7 +41,10 @@ pub struct LiveChannelInput {
     pub id: Option<String>,
     pub name: String,
     pub criteria_type: String,
-    pub criteria_value: String,
+    #[serde(default)]
+    pub criteria_value: Option<String>,
+    #[serde(default)]
+    pub criteria_values: Vec<String>,
     pub order_mode: String,
 }
 
@@ -76,6 +91,11 @@ pub fn list(root: &Path, user_id: &str) -> Result<Vec<LiveChannel>, String> {
     if !path.is_file() { return Ok(Vec::new()); }
     let bytes = fs::read(&path).map_err(|error| error.to_string())?;
     let mut channels: Vec<LiveChannel> = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    for channel in &mut channels {
+        if channel.criteria_values.is_empty() && !channel.criteria_value.trim().is_empty() {
+            channel.criteria_values = vec![channel.criteria_value.clone()];
+        }
+    }
     decorate_art(root, &mut channels);
     Ok(channels)
 }
@@ -88,10 +108,23 @@ fn persist(root: &Path, user_id: &str, channels: &[LiveChannel]) -> Result<(), S
     fs::write(path, serde_json::to_vec_pretty(&stored).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
 }
 
+fn normalized_values(input: &LiveChannelInput) -> Vec<String> {
+    let mut values = input.criteria_values.iter().map(|value| value.trim()).filter(|value| !value.is_empty()).map(str::to_string).collect::<Vec<_>>();
+    if values.is_empty() {
+        if let Some(value) = input.criteria_value.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            values.push(value.to_string());
+        }
+    }
+    values.sort_by_key(|value| value.to_lowercase());
+    values.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    values
+}
+
 fn validate_input(input: &LiveChannelInput) -> Result<(), String> {
     if input.name.trim().is_empty() { return Err("Channel name cannot be empty".into()); }
     if !matches!(input.criteria_type.as_str(), "show" | "genre" | "playlist") { return Err("Channel criteria must be a TV show, genre, or playlist".into()); }
-    if input.criteria_value.trim().is_empty() { return Err("Choose content for this channel".into()); }
+    if normalized_values(input).is_empty() { return Err("Choose content for this channel".into()); }
+    if input.criteria_type == "playlist" && normalized_values(input).len() != 1 { return Err("Playlist channels use one playlist".into()); }
     if !matches!(input.order_mode.as_str(), "sequential" | "shuffle") { return Err("Channel order must be sequential or shuffle".into()); }
     Ok(())
 }
@@ -101,11 +134,14 @@ pub fn save(root: &Path, user_id: &str, input: LiveChannelInput) -> Result<Vec<L
     let mut channels = list(root, user_id)?;
     let now = Utc::now().timestamp();
     let id = input.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let criteria_values = normalized_values(&input);
+    let criteria_value = criteria_values.first().cloned().unwrap_or_default();
     let next = LiveChannel {
         id: id.clone(),
         name: input.name.trim().to_string(),
         criteria_type: input.criteria_type,
-        criteria_value: input.criteria_value,
+        criteria_value,
+        criteria_values,
         order_mode: input.order_mode,
         anchor_time: now,
         created_at: now,
@@ -170,9 +206,14 @@ fn sequential_sort(items: &mut [MediaItem]) {
 }
 
 fn candidates(channel: &LiveChannel, media: &[MediaItem], playlists: &[Playlist]) -> Vec<MediaItem> {
+    let selected = channel.selected_values();
     let mut values = match channel.criteria_type.as_str() {
-        "show" => media.iter().filter(|item| item.kind == "episode" && item.show_title.as_deref().is_some_and(|title| title.eq_ignore_ascii_case(&channel.criteria_value))).cloned().collect::<Vec<_>>(),
-        "genre" => media.iter().filter(|item| item.genres.iter().any(|genre| genre.eq_ignore_ascii_case(&channel.criteria_value))).cloned().collect::<Vec<_>>(),
+        "show" => media.iter().filter(|item| {
+            item.kind == "episode" && item.show_title.as_deref().is_some_and(|title| selected.iter().any(|value| title.eq_ignore_ascii_case(value)))
+        }).cloned().collect::<Vec<_>>(),
+        "genre" => media.iter().filter(|item| {
+            item.genres.iter().any(|genre| selected.iter().any(|value| genre.eq_ignore_ascii_case(value)))
+        }).cloned().collect::<Vec<_>>(),
         "playlist" => {
             let lookup: HashMap<&str, &MediaItem> = media.iter().map(|item| (item.id.as_str(), item)).collect();
             playlists.iter().find(|playlist| playlist.id == channel.criteria_value)
@@ -253,9 +294,6 @@ pub fn guide(root: &Path, user_id: &str, media: &[MediaItem], playlists: &[Playl
 
 fn enriched_user_media(state: &crate::app_state::AppState, user_id: &str) -> Result<Vec<MediaItem>, String> {
     if !database::user_exists(&state.database_path, user_id) { return Err("Unknown Onyx user".into()); }
-    // The guide only needs library identity/metadata, not per-user playback progress.
-    // Reuse Onyx's already-loaded in-memory library instead of re-reading and
-    // deserializing every media row from SQLite on every guide refresh.
     let mut items = state.media.read().map_err(|_| "Media lock poisoned")?.clone();
     metadata::enrich_media(&state.database_path, &mut items)?;
     metadata_view::canonicalize(&state.database_path, &mut items)?;
@@ -288,7 +326,7 @@ pub fn live_channels_delete(user_id: String, state: TauriState<'_, Shared>, chan
 #[tauri::command]
 pub fn live_channels_set_artwork(user_id: String, channel_id: String, path: String, state: TauriState<'_, Shared>) -> Result<Vec<LiveChannel>, String> {
     if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
-    set_artwork(&state.provider_path, &user_id, &channel_id, Path::new(&path))
+    set_artwork(&state.provider_path, &user_id, channel_id.as_str(), Path::new(&path))
 }
 
 #[tauri::command]
@@ -305,9 +343,9 @@ pub fn live_channels_guide(user_id: String, state: TauriState<'_, Shared>) -> Re
 mod tests {
     use super::*;
 
-    fn media(id: &str, duration_seconds: u64, episode: u16) -> MediaItem {
+    fn media(id: &str, duration_seconds: u64, episode: u16, show: &str) -> MediaItem {
         MediaItem {
-            id: id.into(), title: format!("Episode {episode}"), year: None, kind: "episode".into(), show_title: Some("Demo".into()), season: Some(1), episode: Some(episode), episode_end: None,
+            id: id.into(), title: format!("Episode {episode}"), year: None, kind: "episode".into(), show_title: Some(show.into()), season: Some(1), episode: Some(episode), episode_end: None,
             path: String::new(), stream_url: String::new(), poster_url: None, backdrop_url: None, thumbnail_url: None, subtitles: vec![], progress_seconds: 0,
             duration_seconds: Some(duration_seconds), container: None, video_codec: None, audio_codec: None, width: None, height: None, playback_mode: "directPlay".into(), added_at: None,
             last_watched_at: None, metadata_entity_id: None, overview: None, genres: vec![], rating: None, release_date: None, provider: None, provider_id: None,
@@ -316,13 +354,23 @@ mod tests {
 
     #[test]
     fn schedule_advances_while_away() {
-        let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
-        let items = vec![media("a", 600, 1), media("b", 600, 2), media("c", 600, 3)];
+        let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), criteria_values: vec!["Demo".into()], order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
+        let items = vec![media("a", 600, 1, "Demo"), media("b", 600, 2, "Demo"), media("c", 600, 3, "Demo")];
         let row = build_row(channel, &items, &[], 2_200, 3_600);
         assert_eq!(row.current.as_ref().unwrap().media_id, "c");
         assert_eq!(row.programs[0].offset_seconds, 0);
         let later = build_row(row.channel, &items, &[], 2_500, 3_600);
         assert_eq!(later.current.unwrap().media_id, "c");
         assert_eq!(later.programs[0].offset_seconds, 300);
+    }
+
+    #[test]
+    fn multi_show_channel_combines_selected_shows() {
+        let channel = LiveChannel { id: "sw".into(), name: "Star Wars".into(), criteria_type: "show".into(), criteria_value: "Andor".into(), criteria_values: vec!["Andor".into(), "Ahsoka".into()], order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
+        let items = vec![media("a", 600, 1, "Andor"), media("b", 600, 1, "Ahsoka"), media("c", 600, 1, "Other")];
+        let selected = candidates(&channel, &items, &[]);
+        assert_eq!(selected.len(), 2);
+        assert!(selected.iter().any(|item| item.show_title.as_deref() == Some("Andor")));
+        assert!(selected.iter().any(|item| item.show_title.as_deref() == Some("Ahsoka")));
     }
 }

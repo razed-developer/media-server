@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, Link2, LoaderCircle, RefreshCw, Unplug } from 'lucide-react';
-import { disconnectIbroadcast, getIbroadcastStatus, pollIbroadcastDeviceAuth, startIbroadcastDeviceAuth, syncIbroadcast } from '../api';
+import { invoke } from '@tauri-apps/api/core';
+import { disconnectIbroadcast, getIbroadcastStatus, isTauriDesktop, pollIbroadcastDeviceAuth, startIbroadcastDeviceAuth, syncIbroadcast } from '../api';
 import type { IbConnectionStatus, IbDeviceCode } from '../types';
 
 export function IbroadcastConnect({ onConnected }: { onConnected?: () => void }) {
   const [status, setStatus] = useState<IbConnectionStatus | null>(null);
   const [device, setDevice] = useState<IbDeviceCode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const timer = useRef<number | null>(null);
 
@@ -28,9 +30,21 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
     return stopPolling;
   }, []);
 
+  const openAuthorization = async () => {
+    if (!device) return;
+    const url = device.verificationUriComplete ?? device.verificationUri;
+    try {
+      if (isTauriDesktop()) await invoke('open_external_url', { url });
+      else window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (cause) {
+      setError(`Could not open the authorization page automatically. Copy this address into your browser: ${device.verificationUri}\n${String(cause)}`);
+    }
+  };
+
   const begin = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const next = await startIbroadcastDeviceAuth();
       setDevice(next);
@@ -41,10 +55,30 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
           if (!result.connected) return;
           stopPolling();
           setDevice(null);
-          await syncIbroadcast();
           await refresh();
           onConnected?.();
+          setNotice('iBroadcast connected. Syncing your music library…');
+          try {
+            await syncIbroadcast();
+            await refresh();
+            setNotice('iBroadcast connected and library sync completed.');
+          } catch (syncError) {
+            setNotice(`iBroadcast connected, but the initial library sync reported a problem. You can use Sync to retry. ${String(syncError)}`);
+          }
         } catch (cause) {
+          // A token may already have been stored even if a follow-up provider request failed.
+          // Check the actual connection state before reporting the authorization as failed.
+          try {
+            const current = await getIbroadcastStatus();
+            setStatus(current);
+            if (current.connected) {
+              stopPolling();
+              setDevice(null);
+              setNotice(`iBroadcast connected. A follow-up request reported: ${String(cause)}`);
+              onConnected?.();
+              return;
+            }
+          } catch { /* preserve original error below */ }
           stopPolling();
           setError(String(cause));
         }
@@ -65,6 +99,7 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
       await disconnectIbroadcast();
       stopPolling();
       setDevice(null);
+      setNotice(null);
       await refresh();
       onConnected?.();
     } catch (cause) {
@@ -74,9 +109,12 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
 
   const sync = async () => {
     setBusy(true);
+    setError(null);
+    setNotice(null);
     try {
       await syncIbroadcast();
       await refresh();
+      setNotice('iBroadcast library sync completed.');
       onConnected?.();
     } catch (cause) {
       setError(String(cause));
@@ -94,12 +132,12 @@ export function IbroadcastConnect({ onConnected }: { onConnected?: () => void })
   }
 
   if (status.connected) {
-    return <div className="provider-card"><Check size={22} /><div className="provider-grow"><strong>iBroadcast connected</strong><p>{status.providerUser ?? 'This profile'}{status.lastSyncAt ? ` · synced ${new Date(status.lastSyncAt * 1000).toLocaleString()}` : ''}</p></div><button onClick={() => void sync()} disabled={busy}><RefreshCw size={16} />Sync</button><button className="danger-text" onClick={() => void disconnect()}><Unplug size={16} />Disconnect</button>{error && <p className="provider-error">{error}</p>}</div>;
+    return <div className="provider-card"><Check size={22} /><div className="provider-grow"><strong>iBroadcast connected</strong><p>{status.providerUser ?? 'This profile'}{status.lastSyncAt ? ` · synced ${new Date(status.lastSyncAt * 1000).toLocaleString()}` : ''}</p>{notice && <p className="muted">{notice}</p>}</div><button onClick={() => void sync()} disabled={busy}><RefreshCw size={16} />Sync</button><button className="danger-text" onClick={() => void disconnect()}><Unplug size={16} />Disconnect</button>{error && <p className="provider-error">{error}</p>}</div>;
   }
 
   if (device) {
-    return <div className="device-auth-card"><p className="eyebrow">CONNECT IBROADCAST</p><h3>Authorize Onyx</h3><p>Open the address on a phone or computer and enter this code:</p><div className="device-code">{device.userCode}</div><a href={device.verificationUriComplete ?? device.verificationUri} target="_blank" rel="noreferrer"><ExternalLink size={16} />{device.verificationUri}</a><p className="muted">Waiting for authorization…</p>{error && <p className="provider-error">{error}</p>}</div>;
+    return <div className="device-auth-card"><p className="eyebrow">CONNECT IBROADCAST</p><h3>Authorize Onyx</h3><p>Open the authorization page on this computer or another device, then enter this code if asked:</p><div className="device-code">{device.userCode}</div><button className="primary" onClick={() => void openAuthorization()}><ExternalLink size={16} />Open authorization page</button><p className="muted selectable-url">{device.verificationUri}</p><p className="muted">Waiting for authorization…</p>{error && <p className="provider-error">{error}</p>}</div>;
   }
 
-  return <div className="provider-card"><Link2 size={22} /><div className="provider-grow"><strong>Connect iBroadcast</strong><p>Music belongs to the current Onyx profile and remains separate from Movies and TV.</p></div><button className="primary" onClick={() => void begin()} disabled={busy}>{busy ? 'Starting…' : 'Connect'}</button>{error && <p className="provider-error">{error}</p>}</div>;
+  return <div className="provider-card"><Link2 size={22} /><div className="provider-grow"><strong>Connect iBroadcast</strong><p>Music belongs to the current Onyx profile and remains separate from Movies and TV.</p></div><button className="primary" onClick={() => void begin()} disabled={busy}>{busy ? 'Starting…' : 'Connect'}</button>{error && <p className="provider-error">{error}</p>}{notice && <p className="muted">{notice}</p>}</div>;
 }

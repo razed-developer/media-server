@@ -1,8 +1,9 @@
-use crate::{activity, ibroadcast, Shared};
+use crate::{activity, database, ibroadcast, Shared};
 use chrono::Utc;
 use keyring::Entry;
 use reqwest::header::CONTENT_TYPE;
 use serde_json::{json, Value};
+use tauri::State as TauriState;
 
 const OAUTH_TOKEN: &str = "https://oauth.ibroadcast.com/token";
 const API_STATUS: &str = "https://api.ibroadcast.com/status";
@@ -55,19 +56,20 @@ fn store_token(user_id: &str, value: &Value, provider_user: Option<String>) -> R
         .set_password(&raw).map_err(|error| format!("Could not save iBroadcast credentials: {error}"))
 }
 
-pub async fn device_poll(state: Shared, user_id: String, device_code: String) -> Result<ibroadcast::DevicePollResponse, String> {
+#[tauri::command]
+pub async fn ibroadcast_device_poll(user_id: String, device_code: String, state: TauriState<'_, Shared>) -> Result<ibroadcast::DevicePollResponse, String> {
+    if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
     let id = client_id(&state)?;
 
-    // iBroadcast's current documentation specifies grant_type=device_code.
-    // Some developer apps/production OAuth nodes have returned
-    // "Unauthorized client: grant_type is invalid" for that value. Cherry Rise's
-    // earlier working implementation used the RFC 8628 URN, so we retain that
-    // only as a compatibility fallback.
+    // Current iBroadcast docs specify grant_type=device_code. Some production
+    // OAuth paths have returned “Unauthorized client: grant_type is invalid”.
+    // Cherry Rise previously worked with the RFC 8628 URN, so Onyx only tries
+    // that value when the documented form is explicitly rejected.
     let first = token_attempt(&id, &device_code, "device_code").await;
     let value = match first {
         Ok(value) => value,
         Err(first_error) if first_error.to_ascii_lowercase().contains("grant_type") || first_error.to_ascii_lowercase().contains("unauthorized client") => {
-            activity::warning("iBroadcast", format!("Documented device_code grant was rejected; trying RFC device grant compatibility mode ({first_error})"));
+            activity::warning("iBroadcast", format!("Documented device_code grant was rejected; trying RFC compatibility mode ({first_error})"));
             token_attempt(&id, &device_code, "urn:ietf:params:oauth:grant-type:device_code").await
                 .map_err(|second| format!("iBroadcast rejected both device OAuth grant forms. Documented form: {first_error}. Compatibility form: {second}. Check that the developer app is active/approved and that the Client ID is correct."))?
         }

@@ -4,6 +4,7 @@ mod commands;
 mod database;
 mod ibroadcast;
 mod library;
+mod metadata;
 mod models;
 mod naming;
 mod probe;
@@ -24,7 +25,9 @@ pub fn run() {
     let artwork_path = data_dir.join("artwork");
     let provider_path = data_dir.join("providers");
     if let Err(error) = database::init(&database_path) { eprintln!("Database initialization failed: {error}"); }
+    if let Err(error) = metadata::init(&database_path) { eprintln!("Metadata initialization failed: {error}"); }
     let initial_media = database::load_library(&database_path).unwrap_or_default();
+    let _ = metadata::reconcile_local_entities(&database_path, &initial_media);
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
         settings: Arc::new(RwLock::new(load_settings(&settings_path))),
@@ -53,7 +56,9 @@ pub fn run() {
             commands::create_playlist, commands::add_to_playlist, commands::remove_from_playlist,
             commands::delete_playlist, commands::ibroadcast_status, commands::ibroadcast_device_start,
             commands::ibroadcast_device_poll, commands::ibroadcast_sync, commands::ibroadcast_library,
-            commands::ibroadcast_disconnect
+            commands::ibroadcast_disconnect, commands::metadata_provider_status,
+            commands::set_tmdb_token, commands::clear_tmdb_token, commands::test_tmdb,
+            commands::metadata_search, commands::metadata_apply_match, commands::metadata_auto_match_all
         ])
         .run(tauri::generate_context!())
         .expect("error while running Onyx");

@@ -18,6 +18,7 @@ import './onyxDialogs.css';
 import './libraryRoots.css';
 import './remote.css';
 import './subtitleFinder.css';
+import './playbackContinuity.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

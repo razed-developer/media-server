@@ -1,12 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AuthStatus, MediaItem, Playlist, ServerStatus, UserProfile } from './types';
+import type { AnalyticsSummary, AuthStatus, MediaItem, Playlist, ServerStatus, ThemeName, UserPreferences, UserProfile } from './types';
 export interface IdentityInput { title?:string; year?:number; kind?:'movie'|'episode'; showTitle?:string; season?:number; episode?:number; }
 export const isTauriDesktop=()=>Boolean((window as Window&{__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__);
 export const serverBaseUrl=()=>isTauriDesktop()?'http://127.0.0.1:8765':'';
 export const resolveMediaUrl=(url?:string|null)=>{if(!url)return undefined;if(/^https?:\/\//i.test(url))return url;return `${serverBaseUrl()}${url.startsWith('/')?url:`/${url}`}`;};
-let activeUserId=localStorage.getItem('home-media-user')||'owner';
+let activeUserId=localStorage.getItem('onyx-user')||localStorage.getItem('home-media-user')||'owner';
 export const getActiveUserId=()=>activeUserId;
-export const setActiveUserId=(id:string)=>{activeUserId=id;localStorage.setItem('home-media-user',id);};
+export const setActiveUserId=(id:string)=>{activeUserId=id;localStorage.setItem('onyx-user',id);};
 const userHeaders=(extra:Record<string,string>={})=>({'x-home-media-user':activeUserId,...extra});
 const browserFetch=(input:string,init?:RequestInit)=>fetch(input,{...init,credentials:'include',headers:{...userHeaders(),...((init?.headers as Record<string,string>|undefined)??{})}});
 async function json<T>(response:Response,message:string):Promise<T>{if(!response.ok)throw new Error(`${message} (${response.status})`);return response.json();}
@@ -16,9 +16,12 @@ export async function logout():Promise<void>{if(!isTauriDesktop())await browserF
 export async function listUsers():Promise<UserProfile[]>{if(isTauriDesktop())return invoke<UserProfile[]>('list_users');return json(await browserFetch(`${serverBaseUrl()}/api/users`),'Could not load users');}
 export async function createUser(name:string):Promise<UserProfile[]>{if(!isTauriDesktop())throw new Error('User management is available from the desktop server app.');return invoke<UserProfile[]>('create_user',{name});}
 export async function deleteUser(userId:string):Promise<UserProfile[]>{if(!isTauriDesktop())throw new Error('User management is available from the desktop server app.');return invoke<UserProfile[]>('delete_user',{userId});}
+export async function getUserPreferences():Promise<UserPreferences>{if(isTauriDesktop())return invoke<UserPreferences>('get_user_preferences',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/preferences`),'Could not load preferences');}
+export async function setUserTheme(theme:ThemeName):Promise<UserPreferences>{if(isTauriDesktop())return invoke<UserPreferences>('set_user_theme',{userId:activeUserId,theme});return json(await browserFetch(`${serverBaseUrl()}/api/preferences/theme`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({theme})}),'Could not save theme');}
+export async function getAnalytics():Promise<AnalyticsSummary>{if(isTauriDesktop())return invoke<AnalyticsSummary>('user_analytics',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/analytics`),'Could not load analytics');}
 export async function listMedia(includeHidden=false):Promise<MediaItem[]>{if(isTauriDesktop())return invoke<MediaItem[]>('list_media',{userId:activeUserId,includeHidden});return json(await browserFetch(`${serverBaseUrl()}/api/library`),'Could not load media library');}
 export async function getServerStatus():Promise<ServerStatus>{if(isTauriDesktop())return invoke<ServerStatus>('server_status');const status=await json<ServerStatus>(await browserFetch(`${serverBaseUrl()}/api/status`),'Could not reach media server');return{...status,localUrl:window.location.origin};}
-export async function saveProgress(id:string,seconds:number):Promise<void>{if(isTauriDesktop()){await invoke('save_progress',{userId:activeUserId,id,seconds});return;}const r=await browserFetch(`${serverBaseUrl()}/api/progress/${encodeURIComponent(id)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({seconds})});if(!r.ok)throw new Error(`Could not save playback progress (${r.status})`);}
+export async function saveProgress(id:string,seconds:number,watchedSeconds=0):Promise<void>{if(isTauriDesktop()){await invoke('save_progress',{userId:activeUserId,id,seconds,watchedSeconds});return;}const r=await browserFetch(`${serverBaseUrl()}/api/progress/${encodeURIComponent(id)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({seconds,watchedSeconds})});if(!r.ok)throw new Error(`Could not save playback progress (${r.status})`);}
 export async function resetWatchStatus(ids:string[]):Promise<MediaItem[]>{if(isTauriDesktop())return invoke<MediaItem[]>('reset_watch_status',{userId:activeUserId,ids});return json(await browserFetch(`${serverBaseUrl()}/api/progress/reset`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})}),'Could not reset watch status');}
 export async function setHidden(targetType:'media'|'show',targetKey:string,hidden:boolean):Promise<MediaItem[]>{if(isTauriDesktop())return invoke<MediaItem[]>('set_hidden',{userId:activeUserId,targetType,targetKey,hidden});return json(await browserFetch(`${serverBaseUrl()}/api/hidden`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({targetType,targetKey,hidden})}),'Could not update hidden media');}
 export async function listPlaylists():Promise<Playlist[]>{if(isTauriDesktop())return invoke<Playlist[]>('list_playlists',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/playlists`),'Could not load playlists');}

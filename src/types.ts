@@ -8,5 +8,15 @@ export interface UserPreferences{theme:ThemeName;}
 export interface Playlist{id:string;name:string;mediaIds:string[];}
 export interface AnalyticsEntry{label:string;seconds:number;}
 export interface AnalyticsSummary{totalSeconds:number;movieSeconds:number;tvSeconds:number;shows:AnalyticsEntry[];}
-export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;}
+export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;setupComplete?:boolean;ibroadcastClientId?:string;}
 export interface AuthStatus{required:boolean;authenticated:boolean;}
+export interface SetupStatus{complete:boolean;moviePath?:string;tvPath?:string;ibroadcastClientId?:string;users:UserProfile[];}
+
+export interface IbTrack{id:string;title:string;artist:string;artistId?:string;album:string;albumId?:string;durationSeconds:number;artworkUrl?:string;sourcePath?:string;}
+export interface IbAlbum{id:string;name:string;artist:string;artistId?:string;year?:number;trackIds:string[];artworkUrl?:string;}
+export interface IbArtist{id:string;name:string;artworkUrl?:string;}
+export interface IbPlaylist{id:string;name:string;trackIds:string[];artworkUrl?:string;}
+export interface IbLibrary{tracks:IbTrack[];albums:IbAlbum[];artists:IbArtist[];playlists:IbPlaylist[];syncedAt?:number;streamingServer?:string;providerUserId?:string;}
+export interface IbConnectionStatus{configured:boolean;connected:boolean;providerUser?:string;lastSyncAt?:number;}
+export interface IbDeviceCode{deviceCode:string;userCode:string;verificationUri:string;verificationUriComplete?:string;interval:number;expiresIn:number;}
+export interface IbDevicePoll{pending:boolean;connected:boolean;message?:string;}

@@ -17,8 +17,8 @@ export interface MetadataSearchResult{provider:string;providerId:string;entityTy
 
 export type LiveChannelCriteria='show'|'genre'|'playlist';
 export type LiveChannelOrder='sequential'|'shuffle';
-export interface LiveChannel{id:string;name:string;criteriaType:LiveChannelCriteria;criteriaValue:string;orderMode:LiveChannelOrder;anchorTime:number;createdAt:number;artUrl?:string;}
-export interface LiveChannelInput{id?:string;name:string;criteriaType:LiveChannelCriteria;criteriaValue:string;orderMode:LiveChannelOrder;}
+export interface LiveChannel{id:string;name:string;criteriaType:LiveChannelCriteria;criteriaValue:string;criteriaValues?:string[];orderMode:LiveChannelOrder;anchorTime:number;createdAt:number;artUrl?:string;}
+export interface LiveChannelInput{id?:string;name:string;criteriaType:LiveChannelCriteria;criteriaValue?:string;criteriaValues?:string[];orderMode:LiveChannelOrder;}
 export interface GuideProgram{mediaId:string;title:string;subtitle?:string;startsAt:number;endsAt:number;offsetSeconds:number;durationSeconds:number;}
 export interface GuideChannel{channel:LiveChannel;current?:GuideProgram;programs:GuideProgram[];}
 

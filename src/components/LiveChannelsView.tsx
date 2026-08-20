@@ -1,18 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LoaderCircle, Radio, RefreshCw, Settings2 } from 'lucide-react';
-import { getLiveChannelGuide, listLiveChannels, liveChannelStreamUrl, resolveMediaUrl } from '../api';
+import { getActiveUserId, getLiveChannelGuide, listLiveChannels, liveChannelStreamUrl, resolveMediaUrl } from '../api';
 import type { GuideChannel, LiveChannel, MediaItem } from '../types';
 
 const WINDOW_SECONDS = 3 * 60 * 60;
 const HALF_HOUR = 30 * 60;
+const cacheKey=()=>`onyx-live-guide:${getActiveUserId()}`;
 
 const clock = (timestamp:number) => new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-const placeholders = (channels:LiveChannel[]):GuideChannel[] => channels.map(channel=>({channel,current:null,programs:[]}));
+const placeholders = (channels:LiveChannel[]):GuideChannel[] => channels.map(channel=>({channel,current:undefined,programs:[]}));
+const reviveCachedGuide=():GuideChannel[]=>{
+  try{
+    const raw=localStorage.getItem(cacheKey());if(!raw)return[];
+    const rows=JSON.parse(raw) as GuideChannel[];const now=Math.floor(Date.now()/1000);
+    return rows.map(row=>{
+      const current=row.programs.find(program=>program.startsAt<=now&&program.endsAt>now);
+      return current?{...row,current:{...current,offsetSeconds:Math.max(0,now-current.startsAt)}}:{...row,current:undefined};
+    });
+  }catch{return[]}
+};
 
 export function LiveChannelsView({media,onOpenSettings}:{media:MediaItem[];onOpenSettings:()=>void}){
-  const[guide,setGuide]=useState<GuideChannel[]>([]);
-  const[tuned,setTuned]=useState<GuideChannel|null>(null);
-  const[initializing,setInitializing]=useState(true);
+  const cached=useMemo(()=>reviveCachedGuide(),[]);
+  const[guide,setGuide]=useState<GuideChannel[]>(cached);
+  const[tuned,setTuned]=useState<GuideChannel|null>(()=>cached.find(row=>Boolean(row.current))??null);
+  const[initializing,setInitializing]=useState(cached.length===0);
   const[loadingGuide,setLoadingGuide]=useState(false);
   const[error,setError]=useState<string|null>(null);
   const mediaById=useMemo(()=>new Map(media.map(item=>[item.id,item])),[media]);
@@ -25,6 +37,7 @@ export function LiveChannelsView({media,onOpenSettings}:{media:MediaItem[];onOpe
     setLoadingGuide(true);
     try{
       const next=await getLiveChannelGuide();
+      localStorage.setItem(cacheKey(),JSON.stringify(next));
       setGuide(next);setError(null);
       setTuned(current=>{
         if(!current&&autoTune)return next.find(row=>Boolean(row.current))??null;
@@ -42,7 +55,11 @@ export function LiveChannelsView({media,onOpenSettings}:{media:MediaItem[];onOpe
       try{
         const channels=await listLiveChannels();
         if(disposed)return;
-        setGuide(placeholders(channels));
+        setGuide(current=>{
+          const known=new Set(channels.map(channel=>channel.id));
+          const useful=current.filter(row=>known.has(row.channel.id));
+          return useful.length===channels.length?useful:placeholders(channels);
+        });
         setInitializing(false);
         if(channels.length)await refresh(true);
       }catch(c){if(!disposed){setError(String(c));setInitializing(false)}}

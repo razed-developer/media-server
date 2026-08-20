@@ -72,7 +72,21 @@ pub struct AnalyticsSummary {
     pub movie_seconds: u64,
     pub tv_seconds: u64,
     pub shows: Vec<AnalyticsEntry>,
-    #[serde(default)] pub genres: Vec<AnalyticsEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrichedAnalyticsSummary {
+    pub total_seconds: u64,
+    pub movie_seconds: u64,
+    pub tv_seconds: u64,
+    pub shows: Vec<AnalyticsEntry>,
+    pub genres: Vec<AnalyticsEntry>,
+}
+impl EnrichedAnalyticsSummary {
+    pub fn from_core(core: AnalyticsSummary, genres: Vec<AnalyticsEntry>) -> Self {
+        Self { total_seconds: core.total_seconds, movie_seconds: core.movie_seconds, tv_seconds: core.tv_seconds, shows: core.shows, genres }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

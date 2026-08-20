@@ -1,9 +1,9 @@
-use crate::{activity, models::MediaItem, Shared};
+use crate::{activity, metadata, models::MediaItem, Shared};
 use keyring::Entry;
 use reqwest::{header::{AUTHORIZATION, CONTENT_TYPE, USER_AGENT}, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{fs, path::{Path, PathBuf}};
+use std::{collections::HashSet, fs, path::{Path, PathBuf}};
 use tauri::State;
 
 const API_ROOT: &str = "https://api.opensubtitles.com/api/v1";
@@ -59,15 +59,57 @@ pub async fn test()->Result<(),String>{let c=load()?;let _=login(&c).await?;acti
 
 fn find_media(state:&crate::app_state::AppState,id:&str)->Result<MediaItem,String>{state.media.read().map_err(|_|"Media lock poisoned".to_string())?.iter().find(|m|m.id==id).cloned().ok_or_else(||"Media item not found".into())}
 
+fn filename_hint(item:&MediaItem)->String{Path::new(&item.path).file_stem().and_then(|v|v.to_str()).unwrap_or(&item.title).to_string()}
+
+fn tmdb_search_id(state:&crate::app_state::AppState,item:&MediaItem)->Option<String>{
+ if item.kind!="episode" { return item.provider_id.clone(); }
+ let series=metadata::series_for_media(&state.database_path,&item.id).ok().flatten()?;
+ metadata::provider_match(&state.database_path,&series.id,"tmdb").ok().flatten().map(|m|m.provider_id)
+}
+
+fn parse_results(value:&Value,language:&str)->Vec<SubtitleSearchResult>{
+ let mut out=vec![];
+ for row in value.get("data").and_then(Value::as_array).into_iter().flatten().take(50){
+  let a=row.get("attributes").unwrap_or(row);
+  let Some(files)=a.get("files").and_then(Value::as_array) else{continue};
+  for file in files.iter().take(2){
+   let Some(file_id)=file.get("file_id").and_then(Value::as_i64) else{continue};
+   out.push(SubtitleSearchResult{file_id,file_name:file.get("file_name").and_then(Value::as_str).unwrap_or("subtitle.srt").to_string(),language:a.get("language").and_then(Value::as_str).unwrap_or(language).to_string(),release:a.get("release").and_then(Value::as_str).or_else(||a.get("feature_details").and_then(|v|v.get("title")).and_then(Value::as_str)).unwrap_or("").to_string(),hearing_impaired:a.get("hearing_impaired").and_then(Value::as_bool).unwrap_or(false),download_count:a.get("download_count").and_then(Value::as_u64).unwrap_or(0)});
+  }
+ }
+ out
+}
+
+async fn search_request(c:&Credentials,token:&str,base:&str,params:&[(&str,String)],language:&str)->Result<Vec<SubtitleSearchResult>,String>{
+ let response=client().get(format!("{base}/subtitles")).header("Api-Key",&c.api_key).header(USER_AGENT,APP_USER_AGENT).header(AUTHORIZATION,format!("Bearer {token}")).query(params).send().await.map_err(|e|e.to_string())?;
+ let code=response.status();let value:Value=response.json().await.map_err(|e|e.to_string())?;
+ if !code.is_success(){let message=value.get("message").and_then(Value::as_str).unwrap_or("search unavailable");return Err(format!("OpenSubtitles search failed ({code}): {message}"))}
+ Ok(parse_results(&value,language))
+}
+
 pub async fn search(state:&crate::app_state::AppState,media_id:&str,language:&str)->Result<Vec<SubtitleSearchResult>,String>{
  let c=load()?;let item=find_media(state,media_id)?;let (token,base)=login(&c).await?;
- let mut params:Vec<(&str,String)>=vec![("languages",language.to_string()),("order_by","download_count".into()),("order_direction","desc".into())];
- if let Some(tmdb)=item.provider_id.as_ref(){if item.kind=="episode"{params.push(("parent_tmdb_id",tmdb.clone()));if let Some(s)=item.season{params.push(("season_number",s.to_string()));}if let Some(e)=item.episode{params.push(("episode_number",e.to_string()));}}else{params.push(("tmdb_id",tmdb.clone()));}}
- else {params.push(("query",if item.kind=="episode"{item.show_title.clone().unwrap_or(item.title.clone())}else{item.title.clone()}));}
- activity::info("Subtitles",format!("Searching OpenSubtitles for “{}” ({language})",item.title));
- let response=client().get(format!("{base}/subtitles")).header("Api-Key",&c.api_key).header(USER_AGENT,APP_USER_AGENT).header(AUTHORIZATION,format!("Bearer {token}")).query(&params).send().await.map_err(|e|e.to_string())?;let code=response.status();let value:Value=response.json().await.map_err(|e|e.to_string())?;if !code.is_success(){let message=value.get("message").and_then(Value::as_str).unwrap_or("search unavailable");activity::error("Subtitles",format!("OpenSubtitles search failed ({code}): {message}"));return Err(format!("OpenSubtitles search failed ({code}): {message}"))}
- let mut out=vec![];for row in value.get("data").and_then(Value::as_array).into_iter().flatten().take(30){let a=row.get("attributes").unwrap_or(row);let Some(file)=a.get("files").and_then(Value::as_array).and_then(|v|v.first()) else{continue};let Some(file_id)=file.get("file_id").and_then(Value::as_i64) else{continue};out.push(SubtitleSearchResult{file_id,file_name:file.get("file_name").and_then(Value::as_str).unwrap_or("subtitle.srt").to_string(),language:a.get("language").and_then(Value::as_str).unwrap_or(language).to_string(),release:a.get("release").and_then(Value::as_str).or_else(||a.get("feature_details").and_then(|v|v.get("title")).and_then(Value::as_str)).unwrap_or("").to_string(),hearing_impaired:a.get("hearing_impaired").and_then(Value::as_bool).unwrap_or(false),download_count:a.get("download_count").and_then(Value::as_u64).unwrap_or(0)});}
- activity::info("Subtitles",format!("OpenSubtitles returned {} candidates",out.len()));Ok(out)
+ let mut searches:Vec<Vec<(&str,String)>>=vec![];
+ let common=||vec![("languages",language.to_string()),("order_by","download_count".into()),("order_direction","desc".into())];
+ if let Some(tmdb)=tmdb_search_id(state,&item){
+  let mut p=common();
+  if item.kind=="episode"{p.push(("parent_tmdb_id",tmdb));if let Some(s)=item.season{p.push(("season_number",s.to_string()));}if let Some(e)=item.episode{p.push(("episode_number",e.to_string()));}}
+  else{p.push(("tmdb_id",tmdb));}
+  searches.push(p);
+ }
+ let mut exact_name=common();exact_name.push(("query",filename_hint(&item)));searches.push(exact_name);
+ let mut title_search=common();title_search.push(("query",if item.kind=="episode"{format!("{} S{:02}E{:02}",item.show_title.clone().unwrap_or_default(),item.season.unwrap_or(0),item.episode.unwrap_or(0))}else{match item.year{Some(y)=>format!("{} {y}",item.title),None=>item.title.clone()}}));searches.push(title_search);
+ activity::info("Subtitles",format!("Searching OpenSubtitles for “{}” using metadata and release filename ({language})",item.title));
+ let mut out=vec![];let mut seen=HashSet::new();let mut last_error=None;
+ for params in searches{
+  match search_request(&c,&token,&base,&params,language).await{
+   Ok(rows)=>for row in rows{if seen.insert(row.file_id){out.push(row);}},
+   Err(e)=>last_error=Some(e),
+  }
+  if out.len()>=30{break;}
+ }
+ if out.is_empty(){if let Some(error)=last_error{activity::error("Subtitles",&error);return Err(error)}}
+ out.truncate(30);activity::info("Subtitles",format!("OpenSubtitles returned {} unique candidates, with exact metadata matches first",out.len()));Ok(out)
 }
 
 fn destination_for(video:&Path,language:&str,index:u32)->Result<PathBuf,String>{let parent=video.parent().ok_or("Media file has no parent folder")?;let stem=video.file_stem().and_then(|v|v.to_str()).ok_or("Media filename is invalid")?;let safe_lang=language.chars().filter(|c|c.is_ascii_alphanumeric()||*c=='-').collect::<String>();let suffix=if index<=1{String::new()}else{format!(".{index}")};Ok(parent.join(format!("{stem}.{safe_lang}{suffix}.srt")))}

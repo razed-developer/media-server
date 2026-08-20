@@ -36,13 +36,14 @@ pub fn run() {
             let server_state = shared.clone();
             let web_root = if cfg!(debug_assertions) { None } else { app.path().resolve("web", BaseDirectory::Resource).ok() };
             tauri::async_runtime::spawn(async move { server::start(server_state, PORT, web_root).await; });
-            if let Some(window) = app.get_webview_window("main") { let _ = window.set_title("Home Media"); }
+            if let Some(window) = app.get_webview_window("main") { let _ = window.set_title("Onyx"); }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::set_access_password, commands::clear_access_password,
             commands::scan_library, commands::list_users, commands::create_user, commands::delete_user,
+            commands::get_user_preferences, commands::set_user_theme, commands::user_analytics,
             commands::list_media, commands::save_progress, commands::reset_watch_status, commands::set_hidden,
             commands::server_status, commands::clear_thumbnail_cache, commands::identify_item,
             commands::identify_show, commands::reset_identification, commands::list_playlists,
@@ -50,5 +51,5 @@ pub fn run() {
             commands::delete_playlist
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Home Media");
+        .expect("error while running Onyx");
 }

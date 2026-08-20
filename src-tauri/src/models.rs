@@ -31,6 +31,7 @@ pub struct MediaItem {
     #[serde(default)] pub thumbnail_url: Option<String>,
     pub subtitles: Vec<SubtitleTrack>,
     pub progress_seconds: u64,
+    #[serde(default)] pub last_watched_at: Option<u64>,
     pub duration_seconds: Option<u64>,
     pub container: Option<String>,
     pub video_codec: Option<String>,

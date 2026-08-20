@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Heart, Laugh, MessageCircleHeart, Send, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { MessageCircleHeart, Send } from 'lucide-react';
 import type { UserProfile } from '../types';
 import { getActiveUserId } from '../api';
 import { getReactions, sendRecommendation, setReaction, type ReactionEntry } from '../userFeaturesApi';

@@ -33,7 +33,9 @@ argon2 = "0.5"
 uuid = { version = "1", features = ["v4", "serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 chrono = { version = "0.4", features = ["serde"] }
-keyring = "3.6"
+# keyring v3 has no credential-store features enabled by default. Explicitly
+# enable native secure storage for the desktop platforms Onyx targets.
+keyring = { version = "3.6", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
 
 [profile.release]
 panic = "abort"

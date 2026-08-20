@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriDesktop } from './api';
 
-export interface UserAvatar { userId:string; avatarId:string; customUrl?:string; }
-export interface ReactionEntry { userId:string; userName:string; avatarId:string; customAvatarUrl?:string; reaction:string; }
+export interface UserAvatar { userId:string; avatarId:string; customUrl?:string; customPath?:string; }
+export interface ReactionEntry { userId:string; userName:string; avatarId:string; customAvatarUrl?:string; customAvatarPath?:string; reaction:string; }
 export interface RecommendationEntry { id:string; fromUserId:string; fromUserName:string; targetType:'movie'|'show'; targetKey:string; title:string; posterUrl?:string; note?:string; createdAt:number; read:boolean; }
 
 export const BUILTIN_AVATARS=['onyx','moon','ember','wave','forest','violet','sun','ice'] as const;

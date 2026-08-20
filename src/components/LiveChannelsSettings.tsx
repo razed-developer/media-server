@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, X } from 'lucide-react';
-import { chooseLiveChannelArtwork, deleteLiveChannel, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
+import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
 import type { LiveChannel, LiveChannelCriteria, LiveChannelOrder, MediaItem, Playlist } from '../types';
+
+type WarmCriteria={shows:string[];genres:string[];playlists:Playlist[]};
+const readWarmCriteria=():WarmCriteria|undefined=>{try{const raw=sessionStorage.getItem(`onyx-live-criteria:${getActiveUserId()}`);return raw?JSON.parse(raw) as WarmCriteria:undefined}catch{return undefined}};
 
 export function LiveChannelsSettings(){
   const desktop=isTauriDesktop();
+  const warm=useMemo(()=>readWarmCriteria(),[]);
   const[channels,setChannels]=useState<LiveChannel[]>([]);
   const[media,setMedia]=useState<MediaItem[]>([]);
-  const[playlists,setPlaylists]=useState<Playlist[]>([]);
+  const[playlists,setPlaylists]=useState<Playlist[]>(warm?.playlists??[]);
   const[editingId,setEditingId]=useState<string|undefined>();
   const[name,setName]=useState('');
   const[criteriaType,setCriteriaType]=useState<LiveChannelCriteria>('show');
@@ -16,19 +20,19 @@ export function LiveChannelsSettings(){
   const[orderMode,setOrderMode]=useState<LiveChannelOrder>('sequential');
   const[error,setError]=useState<string|null>(null);
   const[busy,setBusy]=useState(false);
-  const[criteriaBusy,setCriteriaBusy]=useState(true);
+  const[criteriaBusy,setCriteriaBusy]=useState(!warm);
 
   const refresh=async()=>{
     try{
       const saved=await listLiveChannels();setChannels(saved);setError(null);
-      setCriteriaBusy(true);
+      if(!warm)setCriteriaBusy(true);
       const[m,p]=await Promise.all([listMedia(),listPlaylists()]);setMedia(m);setPlaylists(p);
     }catch(cause){setError(String(cause))}finally{setCriteriaBusy(false)}
   };
   useEffect(()=>{void refresh()},[]);
 
-  const shows=useMemo(()=>[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b)),[media]);
-  const genres=useMemo(()=>[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b)),[media]);
+  const shows=useMemo(()=>media.length?[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b)):(warm?.shows??[]),[media,warm]);
+  const genres=useMemo(()=>media.length?[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b)):(warm?.genres??[]),[media,warm]);
   const multiOptions=criteriaType==='show'?shows:genres;
   const selectedCount=criteriaType==='playlist'?(playlistValue?1:0):selectedValues.length;
 
@@ -38,7 +42,7 @@ export function LiveChannelsSettings(){
     }else{
       const valid=new Set(multiOptions);setSelectedValues(current=>current.filter(value=>valid.has(value)));
     }
-  },[criteriaType,media.length,playlists.length]);
+  },[criteriaType,media.length,playlists.length,multiOptions]);
 
   const toggleValue=(value:string)=>setSelectedValues(current=>current.includes(value)?current.filter(item=>item!==value):[...current,value]);
   const resetBuilder=()=>{setEditingId(undefined);setName('');setCriteriaType('show');setSelectedValues([]);setPlaylistValue(playlists[0]?.id??'');setOrderMode('sequential')};
@@ -57,7 +61,7 @@ export function LiveChannelsSettings(){
       <div className="live-builder-grid">
         <label><span>Channel name</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Star Wars"/></label>
         <label><span>Content</span><select value={criteriaType} onChange={event=>setCriteriaType(event.target.value as LiveChannelCriteria)}><option value="show">TV shows</option><option value="genre">Genres</option><option value="playlist">Playlist</option></select></label>
-        {criteriaType==='playlist'?<label><span>Playlist</span><select value={playlistValue} onChange={event=>setPlaylistValue(event.target.value)} disabled={!playlists.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:playlists.length?playlists.map(playlist=><option value={playlist.id} key={playlist.id}>{playlist.name}</option>):<option value="">No playlists</option>}</select></label>:<div className="live-multi-field"><span>{criteriaType==='show'?'Shows':'Genres'} <small>{selectedValues.length} selected</small></span><div className="live-multi-options">{criteriaBusy?<div className="live-multi-empty">Loading choices…</div>:multiOptions.length?multiOptions.map(value=><button type="button" key={value} className={selectedValues.includes(value)?'selected':''} onClick={()=>toggleValue(value)}>{selectedValues.includes(value)&&<Check size={14}/>}<span>{value}</span></button>):<div className="live-multi-empty">No matching content</div>}</div></div>}
+        {criteriaType==='playlist'?<label><span>Playlist</span><select value={playlistValue} onChange={event=>setPlaylistValue(event.target.value)} disabled={!playlists.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:playlists.length?playlists.map(playlist=><option value={playlist.id} key={playlist.id}>{playlist.name}</option>):<option value="">No playlists</option>}</select></label>:<div className="live-multi-field"><span>{criteriaType==='show'?'Shows':'Genres'} <small>{selectedValues.length} selected</small></span><div className="live-multi-options">{criteriaBusy&&multiOptions.length===0?<div className="live-multi-empty">Loading choices…</div>:multiOptions.length?multiOptions.map(value=><button type="button" key={value} className={selectedValues.includes(value)?'selected':''} onClick={()=>toggleValue(value)}>{selectedValues.includes(value)&&<Check size={14}/>}<span>{value}</span></button>):<div className="live-multi-empty">No matching content</div>}</div></div>}
         <label><span>Playback order</span><select value={orderMode} onChange={event=>setOrderMode(event.target.value as LiveChannelOrder)}><option value="sequential">In order</option><option value="shuffle">Shuffled</option></select></label>
       </div>
       {criteriaType!=='playlist'&&selectedValues.length>0&&<div className="live-selected-chips">{selectedValues.map(value=><button type="button" key={value} onClick={()=>toggleValue(value)}>{value}<X size={13}/></button>)}</div>}

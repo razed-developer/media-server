@@ -9,9 +9,9 @@ export interface Playlist{id:string;name:string;mediaIds:string[];}
 export interface AnalyticsEntry{label:string;seconds:number;}
 export interface AnalyticsSummary{totalSeconds:number;movieSeconds:number;tvSeconds:number;shows:AnalyticsEntry[];genres:AnalyticsEntry[];}
 export interface ActivityEntry{timestamp:number;level:'info'|'warning'|'error'|string;category:string;message:string;}
-export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;moviePaths:string[];tvPaths:string[];itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;setupComplete?:boolean;ibroadcastClientId?:string;}
+export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;moviePaths?:string[];tvPaths?:string[];itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;setupComplete?:boolean;ibroadcastClientId?:string;}
 export interface AuthStatus{required:boolean;authenticated:boolean;}
-export interface SetupStatus{complete:boolean;moviePath?:string;tvPath?:string;moviePaths:string[];tvPaths:string[];ibroadcastClientId?:string;users:UserProfile[];}
+export interface SetupStatus{complete:boolean;moviePath?:string;tvPath?:string;moviePaths?:string[];tvPaths?:string[];ibroadcastClientId?:string;users:UserProfile[];}
 export interface MetadataProviderStatus{provider:string;configured:boolean;enabled:boolean;primary:boolean;attribution:string;}
 export interface MetadataSearchResult{provider:string;providerId:string;entityType:'movie'|'series';title:string;year?:number;overview?:string;posterUrl?:string;backdropUrl?:string;rating?:number;}
 

@@ -17,6 +17,8 @@ pub struct ServerStatus {
     library_path: Option<String>,
     movie_path: Option<String>,
     tv_path: Option<String>,
+    movie_paths: Vec<String>,
+    tv_paths: Vec<String>,
     item_count: usize,
     ffprobe_available: bool,
     ffmpeg_available: bool,
@@ -32,6 +34,8 @@ pub struct SetupStatus {
     complete: bool,
     movie_path: Option<String>,
     tv_path: Option<String>,
+    movie_paths: Vec<String>,
+    tv_paths: Vec<String>,
     ibroadcast_client_id: Option<String>,
     users: Vec<UserProfile>,
 }
@@ -100,17 +104,20 @@ fn show_root(item: &MediaItem) -> PathBuf {
 
 fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
     crate::activity::info("Library", "Scanning configured media libraries");
-    let (legacy_path, movie_path, tv_path) = {
+    let (legacy_path, movie_paths, tv_paths) = {
         let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
-        (settings.library_path.clone(), settings.movie_path.clone(), settings.tv_path.clone())
+        (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths())
     };
     let mut media = Vec::new();
-    if movie_path.is_none() && tv_path.is_none() {
+    if movie_paths.is_empty() && tv_paths.is_empty() {
         if let Some(root) = legacy_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, None)?); }
     } else {
-        if let Some(root) = movie_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("movie"))?); }
-        if let Some(root) = tv_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("episode"))?); }
+        for root in movie_paths { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("movie"))?); }
+        for root in tv_paths { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("episode"))?); }
     }
+    // Guard against overlapping roots accidentally discovering the same file twice.
+    let mut seen = HashSet::new();
+    media.retain(|item| seen.insert(item.id.clone()));
     media.sort_by(|a, b| {
         let kind_order = a.kind.cmp(&b.kind);
         if kind_order != std::cmp::Ordering::Equal { return kind_order; }
@@ -125,13 +132,46 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
     Ok(media)
 }
 
+fn update_root(state: &crate::app_state::AppState, kind: &str, path: String, add: bool) -> Result<(), String> {
+    validate_folder(&path)?;
+    let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
+    let target = if kind == "movie" { &mut settings.movie_paths } else { &mut settings.tv_paths };
+    if add {
+        if !target.iter().any(|existing| Path::new(existing) == Path::new(&path)) { target.push(path.clone()); }
+    } else {
+        target.clear();
+        target.push(path.clone());
+    }
+    target.sort(); target.dedup();
+    if kind == "movie" { settings.movie_path = target.first().cloned(); } else { settings.tv_path = target.first().cloned(); }
+    drop(settings);
+    persist_settings(state)?;
+    scan(state)?;
+    Ok(())
+}
+
+fn remove_root(state: &crate::app_state::AppState, kind: &str, path: &str) -> Result<(), String> {
+    let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
+    let target = if kind == "movie" { &mut settings.movie_paths } else { &mut settings.tv_paths };
+    target.retain(|value| Path::new(value) != Path::new(path));
+    if kind == "movie" { settings.movie_path = target.first().cloned(); } else { settings.tv_path = target.first().cloned(); }
+    drop(settings);
+    persist_settings(state)?;
+    scan(state)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn setup_status(state: TauriState<'_, Shared>) -> Result<SetupStatus, String> {
     let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
+    let movie_paths = settings.effective_movie_paths();
+    let tv_paths = settings.effective_tv_paths();
     Ok(SetupStatus {
         complete: settings.setup_complete,
-        movie_path: settings.movie_path.clone(),
-        tv_path: settings.tv_path.clone(),
+        movie_path: movie_paths.first().cloned(),
+        tv_path: tv_paths.first().cloned(),
+        movie_paths,
+        tv_paths,
         ibroadcast_client_id: settings.ibroadcast_client_id.clone(),
         users: database::list_users(&state.database_path)?,
     })
@@ -159,27 +199,12 @@ pub fn set_library_path(path: String, state: TauriState<'_, Shared>) -> Result<(
     Ok(())
 }
 
-#[tauri::command]
-pub fn set_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> {
-    validate_folder(&path)?;
-    let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
-    settings.movie_path = Some(path);
-    drop(settings);
-    persist_settings(&state)?;
-    scan(&state)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn set_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> {
-    validate_folder(&path)?;
-    let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
-    settings.tv_path = Some(path);
-    drop(settings);
-    persist_settings(&state)?;
-    scan(&state)?;
-    Ok(())
-}
+#[tauri::command] pub fn set_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "movie", path, false) }
+#[tauri::command] pub fn set_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "tv", path, false) }
+#[tauri::command] pub fn add_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "movie", path, true) }
+#[tauri::command] pub fn add_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "tv", path, true) }
+#[tauri::command] pub fn remove_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root(&state, "movie", &path) }
+#[tauri::command] pub fn remove_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root(&state, "tv", &path) }
 
 #[tauri::command]
 pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> Result<(), String> {
@@ -335,10 +360,6 @@ pub async fn metadata_search(id: String, query: Option<String>, state: TauriStat
     let search_query = query
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| if item.kind == "episode" { item.show_title.clone().unwrap_or(item.title.clone()) } else { item.title.clone() });
-    // Manual Fix Match searches intentionally do not send a year filter to TMDB.
-    // Years can be wrong in local filenames/folders, and TMDB's year parameter is a hard
-    // filter that can hide the correct result entirely. The returned year is still shown
-    // to the user, while automatic matching continues to use year as a confidence hint.
     metadata::tmdb::search(if item.kind == "episode" { "series" } else { "movie" }, &search_query, None).await
 }
 #[tauri::command]
@@ -372,12 +393,16 @@ pub fn clear_thumbnail_cache(state: TauriState<'_, Shared>) -> Result<(), String
 pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, String> {
     let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
     let item_count = state.media.read().map_err(|_| "Media lock poisoned")?.len();
+    let movie_paths = settings.effective_movie_paths();
+    let tv_paths = settings.effective_tv_paths();
     Ok(ServerStatus {
         running: true,
         local_url: lan_url(),
         library_path: settings.library_path.clone(),
-        movie_path: settings.movie_path.clone(),
-        tv_path: settings.tv_path.clone(),
+        movie_path: movie_paths.first().cloned(),
+        tv_path: tv_paths.first().cloned(),
+        movie_paths,
+        tv_paths,
         item_count,
         ffprobe_available: command_available("ffprobe"),
         ffmpeg_available: command_available("ffmpeg"),

@@ -67,3 +67,12 @@ export async function syncIbroadcast():Promise<IbLibrary>{if(isTauriDesktop())re
 export async function getIbroadcastLibrary():Promise<IbLibrary>{if(isTauriDesktop())return invoke<IbLibrary>('ibroadcast_library',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/library`),'Could not load iBroadcast library');}
 export async function disconnectIbroadcast():Promise<void>{if(isTauriDesktop()){await invoke('ibroadcast_disconnect',{userId:activeUserId});return;}const r=await browserFetch(`${serverBaseUrl()}/api/ibroadcast/disconnect`,{method:'POST'});if(!r.ok)throw new Error('Could not disconnect iBroadcast');}
 export const ibroadcastStreamUrl=(trackId:string)=>`${serverBaseUrl()}/api/ibroadcast/stream/${encodeURIComponent(trackId)}`;
+export async function fetchIbroadcastAudioBlob(trackId:string):Promise<string>{
+  const response=await browserFetch(ibroadcastStreamUrl(trackId),{headers:{Range:'bytes=0-'}});
+  if(!response.ok){const detail=await response.text().catch(()=>"");throw new Error(detail||`iBroadcast audio request failed (${response.status})`);}
+  const contentType=response.headers.get('content-type')||'';
+  if(contentType.includes('json')||contentType.includes('html')||contentType.startsWith('text/')){const detail=await response.text().catch(()=>"");throw new Error(detail||`iBroadcast returned ${contentType||'non-audio content'}`);}
+  const blob=await response.blob();
+  if(blob.size===0)throw new Error('iBroadcast returned an empty audio response.');
+  return URL.createObjectURL(blob);
+}

@@ -15,6 +15,7 @@ mod models;
 mod naming;
 mod probe;
 mod server;
+mod user_features;
 
 use app_state::{app_data_dir, load_settings, AppState};
 use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}};
@@ -50,6 +51,7 @@ pub fn run() {
     activity::info("Server", format!("Onyx starting with data directory {}", data_dir.display()));
     if let Err(error) = database::init(&database_path) { activity::error("Database", format!("Database initialization failed: {error}")); }
     if let Err(error) = metadata::init(&database_path) { activity::error("Metadata", format!("Metadata initialization failed: {error}")); }
+    if let Err(error) = user_features::init(&database_path) { activity::error("Users", format!("User feature initialization failed: {error}")); }
     let initial_media = database::load_library(&database_path).unwrap_or_default();
     let _ = metadata::reconcile_local_entities(&database_path, &initial_media);
     activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
@@ -90,7 +92,11 @@ pub fn run() {
             commands::metadata_search, commands::metadata_apply_match, commands::metadata_auto_match_all,
             live_channels::live_channels_list, live_channels::live_channels_save,
             live_channels::live_channels_delete, live_channels::live_channels_set_artwork,
-            live_channels::live_channels_guide
+            live_channels::live_channels_guide,
+            user_features::user_avatars, user_features::user_avatar_set_builtin,
+            user_features::user_avatar_set_custom, user_features::user_reactions,
+            user_features::user_reaction_set, user_features::user_recommendation_send,
+            user_features::user_recommendations, user_features::user_recommendation_mark_read
         ])
         .run(tauri::generate_context!())
         .expect("error while running Onyx");

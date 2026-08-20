@@ -4,12 +4,14 @@ import App from './App';
 import { FullscreenGuard } from './components/FullscreenGuard';
 import { SetupGate } from './components/SetupGate';
 import { installRemoteNavigation } from './remoteNavigation';
+import { installScrollEnhancements } from './scrollEnhancements';
 import './styles.css';
 import './media.css';
 import './onyx-features.css';
 import './libraryCompact.css';
 import './liveChannels.css';
 import './fullscreen.css';
+import './scrollEnhancements.css';
 import './remote.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -20,3 +22,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 
 installRemoteNavigation();
+installScrollEnhancements();

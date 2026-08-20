@@ -4,7 +4,7 @@ export interface SubtitleTrack { label:string; language:string; url?:string; str
 export interface MediaItem {
   id:string; title:string; year?:number; kind:MediaKind; showTitle?:string; season?:number; episode?:number; episodeEnd?:number;
   path:string; streamUrl:string; posterUrl?:string; backdropUrl?:string; thumbnailUrl?:string; subtitles:SubtitleTrack[];
-  progressSeconds:number; durationSeconds?:number; container?:string; videoCodec?:string; audioCodec?:string; width?:number; height?:number; playbackMode:PlaybackMode;
+  progressSeconds:number; lastWatchedAt?:number; durationSeconds?:number; container?:string; videoCodec?:string; audioCodec?:string; width?:number; height?:number; playbackMode:PlaybackMode;
 }
 export interface UserProfile { id:string; name:string; isAdmin:boolean; }
 export interface Playlist { id:string; name:string; mediaIds:string[]; }

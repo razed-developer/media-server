@@ -75,9 +75,9 @@ fn parse_results(value:&Value,language:&str,file_hint:&str,show_title:Option<&st
  let mut out=vec![];
  for row in value.get("data").and_then(Value::as_array).into_iter().flatten().take(50){
   let a=row.get("attributes").unwrap_or(row);
-  let feature=a.get("feature_details").unwrap_or(&Value::Null);
-  let release=a.get("release").and_then(Value::as_str).or_else(||feature.get("title").and_then(Value::as_str)).unwrap_or("").to_string();
-  let parent_title=feature.get("parent_title").and_then(Value::as_str).or_else(||feature.get("parentTitle").and_then(Value::as_str)).unwrap_or("");
+  let feature=a.get("feature_details");
+  let release=a.get("release").and_then(Value::as_str).or_else(||feature.and_then(|v|v.get("title")).and_then(Value::as_str)).unwrap_or("").to_string();
+  let parent_title=feature.and_then(|v|v.get("parent_title")).and_then(Value::as_str).or_else(||feature.and_then(|v|v.get("parentTitle")).and_then(Value::as_str)).unwrap_or("");
   let hash_match=a.get("moviehash_match").and_then(Value::as_bool).unwrap_or(false);
   let Some(files)=a.get("files").and_then(Value::as_array) else{continue};
   for file in files.iter().take(2){
@@ -109,7 +109,8 @@ pub async fn search(state:&crate::app_state::AppState,media_id:&str,language:&st
  }
  let mut exact_name=common();exact_name.push(("query",file_hint.clone()));searches.push((exact_name,2,item.kind=="episode"));
  let mut title_search=common();title_search.push(("query",if item.kind=="episode"{format!("{} S{:02}E{:02}",item.show_title.clone().unwrap_or_default(),item.season.unwrap_or(0),item.episode.unwrap_or(0))}else{match item.year{Some(y)=>format!("{} {y}",item.title),None=>item.title.clone()}}));searches.push((title_search,1,item.kind=="episode"));
- activity::info("Subtitles",format!("Searching OpenSubtitles for “{}” with exact identity before fallback matches ({language})",item.kind=="episode"?item.show_title.as_deref().unwrap_or(&item.title):&item.title));
+ let search_label=if item.kind=="episode"{item.show_title.as_deref().unwrap_or(&item.title)}else{&item.title};
+ activity::info("Subtitles",format!("Searching OpenSubtitles for “{search_label}” with exact identity before fallback matches ({language})"));
  let mut out=vec![];let mut seen=HashSet::new();let mut last_error=None;
  for (params,rank,strict_show) in searches{
   match search_request(&c,&token,&base,&params,language,&file_hint,show_title,rank,strict_show).await{

@@ -1,13 +1,17 @@
-import { ImagePlus, UserRound } from 'lucide-react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { ImagePlus } from 'lucide-react';
 import { BUILTIN_AVATARS, chooseCustomAvatar, setBuiltinUserAvatar, setCustomUserAvatar, type UserAvatar } from '../userFeaturesApi';
 import '../userFeatures.css';
 
 const glyphs:Record<string,string>={onyx:'◆',moon:'☾',ember:'✦',wave:'≈',forest:'▲',violet:'✺',sun:'☀',ice:'✧'};
 
 export function AvatarBadge({avatar,name,size='md'}:{avatar?:UserAvatar;name:string;size?:'sm'|'md'|'lg'}){
- const cls=`user-avatar avatar-${avatar?.avatarId??'onyx'} avatar-${size}`;
- if(avatar?.avatarId==='custom'&&avatar.customUrl)return <span className={cls}><img src={avatar.customUrl} alt=""/></span>;
- return <span className={cls} aria-hidden="true">{glyphs[avatar?.avatarId??'onyx']??name.slice(0,1).toUpperCase()||<UserRound size={18}/>}</span>;
+ const id=avatar?.avatarId??'onyx';
+ const cls=`user-avatar avatar-${id} avatar-${size}`;
+ const customSrc=id==='custom'?(avatar?.customPath?convertFileSrc(avatar.customPath):avatar?.customUrl):undefined;
+ if(customSrc)return <span className={cls}><img src={customSrc} alt=""/></span>;
+ const glyph=glyphs[id]??name.slice(0,1).toUpperCase()??'•';
+ return <span className={cls} aria-hidden="true">{glyph}</span>;
 }
 
 export function UserAvatarPicker({userId,name,avatar,onChanged}:{userId:string;name:string;avatar?:UserAvatar;onChanged:(avatar:UserAvatar)=>void}){

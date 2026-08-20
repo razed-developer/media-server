@@ -1,5 +1,6 @@
 use crate::{app_state::{persist_settings, Shared}, artwork, database, ibroadcast, library, models::{AnalyticsSummary, MediaItem, Playlist, UserPreferences, UserProfile}, PORT};
 use argon2::{password_hash::{PasswordHasher,SaltString},Argon2};
+use rusqlite::{params,Connection};
 use serde::{Deserialize,Serialize};
 use std::{net::UdpSocket,path::{Path,PathBuf}};
 use tauri::State as TauriState;
@@ -27,6 +28,7 @@ fn ensure_user(state:&crate::app_state::AppState,user_id:&str)->Result<(),String
 #[tauri::command]pub fn scan_library(state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{scan(&state)}
 #[tauri::command]pub fn list_users(state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{database::list_users(&state.database_path)}
 #[tauri::command]pub fn create_user(name:String,state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{database::create_user(&state.database_path,&name)}
+#[tauri::command]pub fn rename_user(user_id:String,name:String,state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{ensure_user(&state,&user_id)?;let clean=name.trim();if clean.is_empty(){return Err("User name cannot be empty".into())}Connection::open(&state.database_path).map_err(|e|e.to_string())?.execute("UPDATE users SET name=?2 WHERE id=?1",params![user_id,clean]).map_err(|e|e.to_string())?;database::list_users(&state.database_path)}
 #[tauri::command]pub fn delete_user(user_id:String,state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{database::delete_user(&state.database_path,&user_id)}
 #[tauri::command]pub fn get_user_preferences(user_id:String,state:TauriState<'_,Shared>)->Result<UserPreferences,String>{ensure_user(&state,&user_id)?;database::get_preferences(&state.database_path,&user_id)}
 #[tauri::command]pub fn set_user_theme(user_id:String,theme:String,state:TauriState<'_,Shared>)->Result<UserPreferences,String>{ensure_user(&state,&user_id)?;database::set_theme(&state.database_path,&user_id,&theme)}

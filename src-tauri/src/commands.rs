@@ -1,52 +1,29 @@
 use crate::{app_state::{persist_settings, Shared}, artwork, database, library, models::MediaItem, PORT};
-use argon2::{password_hash::{PasswordHasher, SaltString}, Argon2};
-use serde::Serialize;
-use std::{net::UdpSocket, path::{Path, PathBuf}};
+use argon2::{password_hash::{PasswordHasher,SaltString},Argon2};
+use serde::{Deserialize,Serialize};
+use std::{net::UdpSocket,path::{Path,PathBuf}};
 use tauri::State as TauriState;
 use uuid::Uuid;
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerStatus {
-    running: bool, local_url: String, library_path: Option<String>, movie_path: Option<String>, tv_path: Option<String>,
-    item_count: usize, ffprobe_available: bool, ffmpeg_available: bool, access_password_set: bool,
-    artwork_cache_bytes: u64,
-}
+#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct ServerStatus{running:bool,local_url:String,library_path:Option<String>,movie_path:Option<String>,tv_path:Option<String>,item_count:usize,ffprobe_available:bool,ffmpeg_available:bool,access_password_set:bool,artwork_cache_bytes:u64}
+#[derive(Deserialize)]#[serde(rename_all="camelCase")]pub struct IdentityInput{pub title:Option<String>,pub year:Option<u16>,pub kind:Option<String>,pub show_title:Option<String>,pub season:Option<u16>,pub episode:Option<u16>}
+fn command_available(name:&str)->bool{std::process::Command::new(name).arg("-version").output().map(|o|o.status.success()).unwrap_or(false)}
+fn lan_url()->String{let ip=UdpSocket::bind("0.0.0.0:0").and_then(|s|{s.connect("8.8.8.8:80")?;s.local_addr()}).map(|a|a.ip().to_string()).unwrap_or_else(|_|"127.0.0.1".into());format!("http://{ip}:{PORT}")}
+fn hash_password(password:&str)->Result<String,String>{let salt=SaltString::encode_b64(Uuid::new_v4().as_bytes()).map_err(|e|e.to_string())?;Argon2::default().hash_password(password.as_bytes(),&salt).map(|h|h.to_string()).map_err(|e|e.to_string())}
+fn scan(state:&crate::app_state::AppState)->Result<Vec<MediaItem>,String>{let(legacy_path,movie_path,tv_path)={let s=state.settings.read().map_err(|_|"Settings lock poisoned")?;(s.library_path.clone(),s.movie_path.clone(),s.tv_path.clone())};let mut media=Vec::new();if movie_path.is_none()&&tv_path.is_none(){if let Some(root)=legacy_path{media.extend(library::scan(&PathBuf::from(root),&state.database_path,None)?);}}else{if let Some(root)=movie_path{media.extend(library::scan(&PathBuf::from(root),&state.database_path,Some("movie"))?);}if let Some(root)=tv_path{media.extend(library::scan(&PathBuf::from(root),&state.database_path,Some("episode"))?);}}media.sort_by(|a,b|{let order=a.kind.cmp(&b.kind);if order!=std::cmp::Ordering::Equal{return order}let ak=(a.show_title.as_deref().unwrap_or(&a.title).to_lowercase(),a.season.unwrap_or(0),a.episode.unwrap_or(0),a.title.to_lowercase());let bk=(b.show_title.as_deref().unwrap_or(&b.title).to_lowercase(),b.season.unwrap_or(0),b.episode.unwrap_or(0),b.title.to_lowercase());ak.cmp(&bk)});database::replace_library(&state.database_path,&media)?;*state.media.write().map_err(|_|"Media lock poisoned")?=media.clone();Ok(media)}
+fn validate_folder(path:&str)->Result<(),String>{if Path::new(path).is_dir(){Ok(())}else{Err("Selected path is not a folder".into())}}
+fn show_root(item:&MediaItem)->PathBuf{let path=Path::new(&item.path);let parent=path.parent().unwrap_or(path);let name=parent.file_name().and_then(|s|s.to_str()).unwrap_or("").to_lowercase();let looks_like_season=name.starts_with("season")||name.chars().next()==Some('s')&&name[1..].chars().all(|c|c.is_ascii_digit());if looks_like_season{parent.parent().unwrap_or(parent).to_path_buf()}else{parent.to_path_buf()}}
 
-fn command_available(name: &str) -> bool { std::process::Command::new(name).arg("-version").output().map(|o| o.status.success()).unwrap_or(false) }
-fn lan_url() -> String {
-    let ip = UdpSocket::bind("0.0.0.0:0").and_then(|socket| { socket.connect("8.8.8.8:80")?; socket.local_addr() }).map(|a| a.ip().to_string()).unwrap_or_else(|_| "127.0.0.1".into());
-    format!("http://{ip}:{PORT}")
-}
-fn hash_password(password: &str) -> Result<String, String> {
-    let salt = SaltString::encode_b64(Uuid::new_v4().as_bytes()).map_err(|e| e.to_string())?;
-    Argon2::default().hash_password(password.as_bytes(), &salt).map(|h| h.to_string()).map_err(|e| e.to_string())
-}
-fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
-    let (legacy_path, movie_path, tv_path) = { let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?; (settings.library_path.clone(), settings.movie_path.clone(), settings.tv_path.clone()) };
-    let mut media = Vec::new();
-    if movie_path.is_none() && tv_path.is_none() { if let Some(root) = legacy_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, None)?); } }
-    else {
-        if let Some(root) = movie_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("movie"))?); }
-        if let Some(root) = tv_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("episode"))?); }
-    }
-    media.sort_by(|a, b| {
-        let kind_order = a.kind.cmp(&b.kind); if kind_order != std::cmp::Ordering::Equal { return kind_order; }
-        let a_key = (a.show_title.as_deref().unwrap_or(&a.title).to_lowercase(), a.season.unwrap_or(0), a.episode.unwrap_or(0), a.title.to_lowercase());
-        let b_key = (b.show_title.as_deref().unwrap_or(&b.title).to_lowercase(), b.season.unwrap_or(0), b.episode.unwrap_or(0), b.title.to_lowercase()); a_key.cmp(&b_key)
-    });
-    database::replace_library(&state.database_path, &media)?;
-    *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone(); Ok(media)
-}
-fn validate_folder(path: &str) -> Result<(), String> { if Path::new(path).is_dir() { Ok(()) } else { Err("Selected path is not a folder".into()) } }
-
-#[tauri::command] pub fn set_library_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { validate_folder(&path)?; state.settings.write().map_err(|_| "Settings lock poisoned")?.library_path = Some(path); persist_settings(&state)?; scan(&state)?; Ok(()) }
-#[tauri::command] pub fn set_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { validate_folder(&path)?; let mut s=state.settings.write().map_err(|_| "Settings lock poisoned")?; s.movie_path=Some(path); drop(s); persist_settings(&state)?; scan(&state)?; Ok(()) }
-#[tauri::command] pub fn set_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { validate_folder(&path)?; let mut s=state.settings.write().map_err(|_| "Settings lock poisoned")?; s.tv_path=Some(path); drop(s); persist_settings(&state)?; scan(&state)?; Ok(()) }
-#[tauri::command] pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> Result<(), String> { if password.chars().count()<8{return Err("Access password must be at least 8 characters".into())} let hash=hash_password(&password)?; state.settings.write().map_err(|_|"Settings lock poisoned")?.access_password_hash=Some(hash); state.sessions.write().map_err(|_|"Session lock poisoned")?.clear(); persist_settings(&state) }
-#[tauri::command] pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String> { state.settings.write().map_err(|_|"Settings lock poisoned")?.access_password_hash=None; state.sessions.write().map_err(|_|"Session lock poisoned")?.clear(); persist_settings(&state) }
-#[tauri::command] pub fn scan_library(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> { scan(&state) }
-#[tauri::command] pub fn list_media(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> { Ok(state.media.read().map_err(|_|"Media lock poisoned")?.clone()) }
-#[tauri::command] pub fn save_progress(id:String,seconds:u64,state:TauriState<'_,Shared>)->Result<(),String>{database::save_progress(&state.database_path,&id,seconds)?;if let Ok(mut media)=state.media.write(){if let Some(item)=media.iter_mut().find(|item|item.id==id){item.progress_seconds=seconds;}}Ok(())}
-#[tauri::command] pub fn clear_thumbnail_cache(state:TauriState<'_,Shared>)->Result<(),String>{artwork::clear_generated_thumbnails(&state.artwork_path)}
-#[tauri::command] pub fn server_status(state:TauriState<'_,Shared>)->Result<ServerStatus,String>{let settings=state.settings.read().map_err(|_|"Settings lock poisoned")?;let item_count=state.media.read().map_err(|_|"Media lock poisoned")?.len();Ok(ServerStatus{running:true,local_url:lan_url(),library_path:settings.library_path.clone(),movie_path:settings.movie_path.clone(),tv_path:settings.tv_path.clone(),item_count,ffprobe_available:command_available("ffprobe"),ffmpeg_available:command_available("ffmpeg"),access_password_set:settings.access_password_hash.is_some(),artwork_cache_bytes:artwork::cache_size(&state.artwork_path)})}
+#[tauri::command]pub fn set_library_path(path:String,state:TauriState<'_,Shared>)->Result<(),String>{validate_folder(&path)?;state.settings.write().map_err(|_|"Settings lock poisoned")?.library_path=Some(path);persist_settings(&state)?;scan(&state)?;Ok(())}
+#[tauri::command]pub fn set_movie_path(path:String,state:TauriState<'_,Shared>)->Result<(),String>{validate_folder(&path)?;let mut s=state.settings.write().map_err(|_|"Settings lock poisoned")?;s.movie_path=Some(path);drop(s);persist_settings(&state)?;scan(&state)?;Ok(())}
+#[tauri::command]pub fn set_tv_path(path:String,state:TauriState<'_,Shared>)->Result<(),String>{validate_folder(&path)?;let mut s=state.settings.write().map_err(|_|"Settings lock poisoned")?;s.tv_path=Some(path);drop(s);persist_settings(&state)?;scan(&state)?;Ok(())}
+#[tauri::command]pub fn set_access_password(password:String,state:TauriState<'_,Shared>)->Result<(),String>{if password.chars().count()<8{return Err("Access password must be at least 8 characters".into())}let hash=hash_password(&password)?;state.settings.write().map_err(|_|"Settings lock poisoned")?.access_password_hash=Some(hash);state.sessions.write().map_err(|_|"Session lock poisoned")?.clear();persist_settings(&state)}
+#[tauri::command]pub fn clear_access_password(state:TauriState<'_,Shared>)->Result<(),String>{state.settings.write().map_err(|_|"Settings lock poisoned")?.access_password_hash=None;state.sessions.write().map_err(|_|"Session lock poisoned")?.clear();persist_settings(&state)}
+#[tauri::command]pub fn scan_library(state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{scan(&state)}
+#[tauri::command]pub fn list_media(state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{Ok(state.media.read().map_err(|_|"Media lock poisoned")?.clone())}
+#[tauri::command]pub fn save_progress(id:String,seconds:u64,state:TauriState<'_,Shared>)->Result<(),String>{database::save_progress(&state.database_path,&id,seconds)?;if let Ok(mut media)=state.media.write(){if let Some(item)=media.iter_mut().find(|i|i.id==id){item.progress_seconds=seconds;}}Ok(())}
+#[tauri::command]pub fn identify_item(id:String,identity:IdentityInput,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{let value=database::IdentityOverride{title:identity.title.filter(|v|!v.trim().is_empty()),year:identity.year,kind:identity.kind.filter(|v|v=="movie"||v=="episode"),show_title:identity.show_title.filter(|v|!v.trim().is_empty()),season:identity.season,episode:identity.episode};database::save_identity_override(&state.database_path,&id,&value)?;scan(&state)}
+#[tauri::command]pub fn reset_identification(id:String,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{database::clear_identity_override(&state.database_path,&id)?;scan(&state)}
+#[tauri::command]pub fn identify_show(id:String,show_title:String,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{let title=show_title.trim();if title.is_empty(){return Err("Show title cannot be empty".into())}let item=state.media.read().map_err(|_|"Media lock poisoned")?.iter().find(|i|i.id==id).cloned().ok_or("Media item not found")?;if item.kind!="episode"{return Err("Selected item is not a TV episode".into())}let root=show_root(&item);database::save_show_override(&state.database_path,&root.to_string_lossy(),title)?;scan(&state)}
+#[tauri::command]pub fn clear_thumbnail_cache(state:TauriState<'_,Shared>)->Result<(),String>{artwork::clear_generated_thumbnails(&state.artwork_path)}
+#[tauri::command]pub fn server_status(state:TauriState<'_,Shared>)->Result<ServerStatus,String>{let settings=state.settings.read().map_err(|_|"Settings lock poisoned")?;let item_count=state.media.read().map_err(|_|"Media lock poisoned")?.len();Ok(ServerStatus{running:true,local_url:lan_url(),library_path:settings.library_path.clone(),movie_path:settings.movie_path.clone(),tv_path:settings.tv_path.clone(),item_count,ffprobe_available:command_available("ffprobe"),ffmpeg_available:command_available("ffmpeg"),access_password_set:settings.access_password_hash.is_some(),artwork_cache_bytes:artwork::cache_size(&state.artwork_path)})}

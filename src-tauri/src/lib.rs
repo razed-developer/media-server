@@ -16,11 +16,28 @@ mod probe;
 mod server;
 
 use app_state::{app_data_dir, load_settings, AppState};
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}};
 use tauri::{path::BaseDirectory, Manager};
 
 pub use app_state::Shared;
 pub const PORT: u16 = 8765;
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only HTTP and HTTPS links can be opened".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    let result = Command::new("rundll32").args(["url.dll,FileProtocolHandler", parsed.as_str()]).spawn();
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open").arg(parsed.as_str()).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = Command::new("xdg-open").arg(parsed.as_str()).spawn();
+
+    result.map(|_| ()).map_err(|error| format!("Could not open the link: {error}"))
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -53,6 +70,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            open_external_url,
             activity::activity_entries, activity::clear_activity, assets::save_ibroadcast_logo,
             commands::setup_status, commands::complete_setup, commands::set_ibroadcast_client_id,
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,

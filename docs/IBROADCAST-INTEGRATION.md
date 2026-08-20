@@ -29,17 +29,28 @@ Every Onyx profile can connect an independent iBroadcast account. The provider t
 
 The first-run wizard and **Settings → Music** allow selecting the active Onyx profile before connecting iBroadcast.
 
-## Creating an Onyx app in iBroadcast
+## Creating an Onyx developer app in iBroadcast
 
-Users who create their own iBroadcast developer application can use the supplied square Onyx logo:
+iBroadcast requires a **128 × 128 PNG** image for a developer application. Do not upload the older 512 × 512 asset directly.
 
-```text
-public/onyx-logo-512.png
-```
+To configure Onyx:
 
-It is a 512×512 PNG and is also exposed as a **Download PNG logo** link in the first-run iBroadcast step and in **Settings → Music**.
+1. Sign in to the iBroadcast web player.
+2. Open **Apps → developer**.
+3. Create a new developer application for Onyx.
+4. Use **Onyx** as the application name.
+5. Upload the supplied **128 × 128 PNG** Onyx application icon.
+6. Save/create the application.
+7. Copy the **Client ID** issued by iBroadcast.
+8. In Onyx, open **Settings → Music**.
+9. Paste the Client ID into **Onyx iBroadcast client ID** and save it.
+10. Select the Onyx profile that should own the music connection and choose **Connect**.
+11. Onyx displays an iBroadcast device authorization code. Open the displayed authorization address on a phone or computer, enter/approve the code, and return to Onyx.
+12. After authorization, Onyx stores the account tokens in the operating-system credential store and synchronizes that profile's iBroadcast library.
 
-The iBroadcast client ID is server-wide, while OAuth account connections are per Onyx profile.
+The iBroadcast **Client ID is server-wide**, while OAuth account connections, tokens, library state, and music preferences are **per Onyx profile**. Do not commit a private client secret, access token, or refresh token to the repository.
+
+The Onyx UI should provide the correctly sized 128 × 128 PNG directly from **Settings → Music** and first-run setup so users do not need to resize the icon themselves.
 
 ## Library
 

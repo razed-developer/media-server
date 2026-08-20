@@ -14,6 +14,7 @@ pub struct UserAvatar {
     pub user_id: String,
     pub avatar_id: String,
     pub custom_url: Option<String>,
+    pub custom_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -23,6 +24,7 @@ pub struct ReactionEntry {
     pub user_name: String,
     pub avatar_id: String,
     pub custom_avatar_url: Option<String>,
+    pub custom_avatar_path: Option<String>,
     pub reaction: String,
 }
 
@@ -85,7 +87,7 @@ fn ensure_user(path: &Path, user_id: &str) -> Result<(), String> {
 
 fn avatar_from_row(user_id: String, avatar_id: String, custom_path: Option<String>) -> UserAvatar {
     let custom_url = custom_path.as_ref().map(|_| format!("/api/users/{}/avatar", urlencoding::encode(&user_id)));
-    UserAvatar { user_id, avatar_id, custom_url }
+    UserAvatar { user_id, avatar_id, custom_url, custom_path }
 }
 
 pub fn list_avatars(path: &Path) -> Result<Vec<UserAvatar>, String> {
@@ -183,7 +185,9 @@ pub fn reactions(path: &Path, target_type: &str, target_key: &str) -> Result<Vec
         let custom: Option<String> = row.get(3)?;
         Ok(ReactionEntry {
             user_id: user_id.clone(), user_name: row.get(1)?, avatar_id: row.get(2)?,
-            custom_avatar_url: custom.map(|_| format!("/api/users/{}/avatar", urlencoding::encode(&user_id))), reaction: row.get(4)?
+            custom_avatar_url: custom.as_ref().map(|_| format!("/api/users/{}/avatar", urlencoding::encode(&user_id))),
+            custom_avatar_path: custom,
+            reaction: row.get(4)?
         })
     }).map_err(|e| e.to_string())?;
     let mut out = Vec::new(); for row in rows { out.push(row.map_err(|e| e.to_string())?); } Ok(out)

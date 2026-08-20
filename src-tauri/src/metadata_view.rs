@@ -79,6 +79,7 @@ pub fn canonicalize(path: &Path, items: &mut [MediaItem]) -> Result<(), String> 
                 }
             }
         }
+        library::refresh_external_subtitles(item);
     }
     Ok(())
 }

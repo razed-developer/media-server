@@ -25,19 +25,11 @@ pub fn init(path: &Path) -> Result<(), String> {
            media_id TEXT PRIMARY KEY, seconds INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
          );
          CREATE TABLE IF NOT EXISTS identity_overrides (
-           media_id TEXT PRIMARY KEY,
-           title TEXT,
-           year INTEGER,
-           kind TEXT,
-           show_title TEXT,
-           season INTEGER,
-           episode INTEGER,
+           media_id TEXT PRIMARY KEY, title TEXT, year INTEGER, kind TEXT, show_title TEXT, season INTEGER, episode INTEGER,
            updated_at INTEGER NOT NULL DEFAULT (unixepoch())
          );
          CREATE TABLE IF NOT EXISTS show_overrides (
-           root_path TEXT PRIMARY KEY,
-           show_title TEXT NOT NULL,
-           updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+           root_path TEXT PRIMARY KEY, show_title TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT (unixepoch())
          );
          CREATE INDEX IF NOT EXISTS idx_media_kind ON media(kind);
          CREATE INDEX IF NOT EXISTS idx_media_show ON media(show_title, season, episode);"
@@ -81,7 +73,7 @@ pub fn save_identity_override(path: &Path, id: &str, value: &IdentityOverride) -
         "INSERT INTO identity_overrides (media_id,title,year,kind,show_title,season,episode,updated_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,unixepoch())
          ON CONFLICT(media_id) DO UPDATE SET title=excluded.title,year=excluded.year,kind=excluded.kind,show_title=excluded.show_title,season=excluded.season,episode=excluded.episode,updated_at=unixepoch()",
-        params![id, value.title, value.year, value.kind, value.show_title, value.season, value.episode]
+        params![id, value.title.as_deref(), value.year, value.kind.as_deref(), value.show_title.as_deref(), value.season, value.episode]
     ).map_err(|e| e.to_string())?;
     Ok(())
 }

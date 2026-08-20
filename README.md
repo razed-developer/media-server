@@ -77,6 +77,10 @@ Current breakdowns include:
 
 Genre analytics require reliable genre metadata, so they are deferred until a metadata provider is added.
 
+## Metadata roadmap
+
+Onyx currently identifies media locally from filenames/folders plus persistent manual corrections. The next major library milestone is a provider-backed metadata layer for canonical movie/show IDs, descriptions, episode information, posters/backdrops, genres, cast/crew and improved visual **Fix identification** search. The provider layer should remain separate from scanning so local-only use continues to work.
+
 ## Library layout
 
 Movies can use ordinary filenames:

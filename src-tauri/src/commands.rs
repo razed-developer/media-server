@@ -1,4 +1,4 @@
-use crate::{app_state::{persist_settings, Shared}, artwork, database, library, models::{MediaItem, Playlist, UserProfile}, PORT};
+use crate::{app_state::{persist_settings, Shared}, artwork, database, library, models::{AnalyticsSummary, MediaItem, Playlist, UserPreferences, UserProfile}, PORT};
 use argon2::{password_hash::{PasswordHasher,SaltString},Argon2};
 use serde::{Deserialize,Serialize};
 use std::{net::UdpSocket,path::{Path,PathBuf}};
@@ -24,8 +24,11 @@ fn ensure_user(state:&crate::app_state::AppState,user_id:&str)->Result<(),String
 #[tauri::command]pub fn list_users(state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{database::list_users(&state.database_path)}
 #[tauri::command]pub fn create_user(name:String,state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{database::create_user(&state.database_path,&name)}
 #[tauri::command]pub fn delete_user(user_id:String,state:TauriState<'_,Shared>)->Result<Vec<UserProfile>,String>{database::delete_user(&state.database_path,&user_id)}
+#[tauri::command]pub fn get_user_preferences(user_id:String,state:TauriState<'_,Shared>)->Result<UserPreferences,String>{ensure_user(&state,&user_id)?;database::get_preferences(&state.database_path,&user_id)}
+#[tauri::command]pub fn set_user_theme(user_id:String,theme:String,state:TauriState<'_,Shared>)->Result<UserPreferences,String>{ensure_user(&state,&user_id)?;database::set_theme(&state.database_path,&user_id,&theme)}
+#[tauri::command]pub fn user_analytics(user_id:String,state:TauriState<'_,Shared>)->Result<AnalyticsSummary,String>{ensure_user(&state,&user_id)?;database::analytics(&state.database_path,&user_id)}
 #[tauri::command]pub fn list_media(user_id:String,include_hidden:Option<bool>,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{ensure_user(&state,&user_id)?;database::load_library_for_user(&state.database_path,&user_id,include_hidden.unwrap_or(false))}
-#[tauri::command]pub fn save_progress(user_id:String,id:String,seconds:u64,state:TauriState<'_,Shared>)->Result<(),String>{ensure_user(&state,&user_id)?;database::save_progress(&state.database_path,&user_id,&id,seconds)}
+#[tauri::command]pub fn save_progress(user_id:String,id:String,seconds:u64,watched_seconds:Option<u64>,state:TauriState<'_,Shared>)->Result<(),String>{ensure_user(&state,&user_id)?;database::save_progress(&state.database_path,&user_id,&id,seconds,watched_seconds.unwrap_or(0))}
 #[tauri::command]pub fn reset_watch_status(user_id:String,ids:Vec<String>,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{ensure_user(&state,&user_id)?;database::reset_progress(&state.database_path,&user_id,&ids)?;database::load_library_for_user(&state.database_path,&user_id,false)}
 #[tauri::command]pub fn set_hidden(user_id:String,target_type:String,target_key:String,hidden:bool,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{ensure_user(&state,&user_id)?;database::set_hidden(&state.database_path,&user_id,&target_type,&target_key,hidden)?;database::load_library_for_user(&state.database_path,&user_id,false)}
 #[tauri::command]pub fn identify_item(id:String,identity:IdentityInput,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{let value=database::IdentityOverride{title:identity.title.filter(|v|!v.trim().is_empty()),year:identity.year,kind:identity.kind.filter(|v|v=="movie"||v=="episode"),show_title:identity.show_title.filter(|v|!v.trim().is_empty()),season:identity.season,episode:identity.episode};database::save_identity_override(&state.database_path,&id,&value)?;scan(&state)}

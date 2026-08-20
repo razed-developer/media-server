@@ -19,12 +19,10 @@ export function LiveChannelsSettings(){
   const[criteriaBusy,setCriteriaBusy]=useState(true);
 
   const refresh=async()=>{
-    setCriteriaBusy(true);
     try{
-      const saved=await listLiveChannels();
-      setChannels(saved);setError(null);
-      const[m,p]=await Promise.all([listMedia(),listPlaylists()]);
-      setMedia(m);setPlaylists(p);
+      const saved=await listLiveChannels();setChannels(saved);setError(null);
+      setCriteriaBusy(true);
+      const[m,p]=await Promise.all([listMedia(),listPlaylists()]);setMedia(m);setPlaylists(p);
     }catch(cause){setError(String(cause))}finally{setCriteriaBusy(false)}
   };
   useEffect(()=>{void refresh()},[]);
@@ -38,65 +36,24 @@ export function LiveChannelsSettings(){
     if(criteriaType==='playlist'){
       if(!playlists.some(playlist=>playlist.id===playlistValue))setPlaylistValue(playlists[0]?.id??'');
     }else{
-      const valid=new Set(multiOptions);
-      setSelectedValues(current=>current.filter(value=>valid.has(value)));
+      const valid=new Set(multiOptions);setSelectedValues(current=>current.filter(value=>valid.has(value)));
     }
   },[criteriaType,media.length,playlists.length]);
 
   const toggleValue=(value:string)=>setSelectedValues(current=>current.includes(value)?current.filter(item=>item!==value):[...current,value]);
   const resetBuilder=()=>{setEditingId(undefined);setName('');setCriteriaType('show');setSelectedValues([]);setPlaylistValue(playlists[0]?.id??'');setOrderMode('sequential')};
-  const edit=(channel:LiveChannel)=>{
-    setEditingId(channel.id);setName(channel.name);setCriteriaType(channel.criteriaType);setOrderMode(channel.orderMode);
-    if(channel.criteriaType==='playlist'){
-      setPlaylistValue(channel.criteriaValue);
-      setSelectedValues([]);
-    }else{
-      const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);
-      setSelectedValues(values);
-    }
-  };
-  const saveChannel=async()=>{
-    if(!name.trim()||selectedCount===0||!desktop)return;
-    setBusy(true);setError(null);
-    try{
-      setChannels(await saveLiveChannel({
-        id:editingId,
-        name:name.trim(),
-        criteriaType,
-        criteriaValue:criteriaType==='playlist'?playlistValue:selectedValues[0],
-        criteriaValues:criteriaType==='playlist'?[playlistValue]:selectedValues,
-        orderMode
-      }));
-      resetBuilder();
-    }catch(cause){setError(String(cause))}finally{setBusy(false)}
-  };
-
-  const remove=async(channel:LiveChannel)=>{
-    if(!desktop||!window.confirm(`Delete channel “${channel.name}”?`))return;
-    try{setChannels(await deleteLiveChannel(channel.id));if(editingId===channel.id)resetBuilder()}catch(cause){setError(String(cause))}
-  };
-
-  const art=async(channel:LiveChannel)=>{
-    if(!desktop)return;
-    const path=await chooseLiveChannelArtwork();if(!path)return;
-    try{setChannels(await setLiveChannelArtwork(channel.id,path))}catch(cause){setError(String(cause))}
-  };
-
-  const channelSummary=(channel:LiveChannel)=>{
-    if(channel.criteriaType==='playlist')return playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist';
-    const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);
-    if(values.length<=3)return values.join(', ');
-    return `${values.slice(0,3).join(', ')} +${values.length-3} more`;
-  };
+  const edit=(channel:LiveChannel)=>{setEditingId(channel.id);setName(channel.name);setCriteriaType(channel.criteriaType);setOrderMode(channel.orderMode);if(channel.criteriaType==='playlist'){setPlaylistValue(channel.criteriaValue);setSelectedValues([])}else setSelectedValues(channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean))};
+  const saveChannel=async()=>{if(!name.trim()||selectedCount===0||!desktop)return;setBusy(true);setError(null);try{setChannels(await saveLiveChannel({id:editingId,name:name.trim(),criteriaType,criteriaValue:criteriaType==='playlist'?playlistValue:selectedValues[0],criteriaValues:criteriaType==='playlist'?[playlistValue]:selectedValues,orderMode}));resetBuilder()}catch(cause){setError(String(cause))}finally{setBusy(false)}};
+  const remove=async(channel:LiveChannel)=>{if(!desktop||!window.confirm(`Delete channel “${channel.name}”?`))return;try{setChannels(await deleteLiveChannel(channel.id));if(editingId===channel.id)resetBuilder()}catch(cause){setError(String(cause))}};
+  const art=async(channel:LiveChannel)=>{if(!desktop)return;const path=await chooseLiveChannelArtwork();if(!path)return;try{setChannels(await setLiveChannelArtwork(channel.id,path))}catch(cause){setError(String(cause))}};
+  const channelSummary=(channel:LiveChannel)=>{if(channel.criteriaType==='playlist')return playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist';const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);return values.length<=3?values.join(', '):`${values.slice(0,3).join(', ')} +${values.length-3} more`};
 
   return <div className="live-settings">
-    <p className="eyebrow">EXPERIMENTAL MODULE</p><h1>Live TV</h1>
-    <p>Build clock-driven channels from your library. A channel never pauses: leaving for twenty minutes means it is twenty minutes further through its schedule when you return.</p>
-    {!desktop&&<div className="settings-card"><strong>Channel administration is desktop-only.</strong><p>The Live TV guide and playback work in browser clients, but create/edit/delete and artwork changes are kept on the server desktop.</p></div>}
+    <p className="eyebrow">LIVE TV</p><h1>Channels</h1>
+    {!desktop&&<div className="settings-card"><strong>Channel administration is desktop-only.</strong></div>}
     {error&&<div className="error-banner">{error}</div>}
-
     {desktop&&<section className="settings-card live-channel-builder">
-      <div className="live-builder-heading"><Radio size={22}/><div><h3>{editingId?'Edit channel':'Create channel'}</h3><p>Choose one or more shows or genres for a combined channel, or use a single Onyx playlist.</p></div></div>
+      <div className="live-builder-heading"><Radio size={22}/><div><h3>{editingId?'Edit channel':'Create channel'}</h3></div></div>
       <div className="live-builder-grid">
         <label><span>Channel name</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Star Wars"/></label>
         <label><span>Content</span><select value={criteriaType} onChange={event=>setCriteriaType(event.target.value as LiveChannelCriteria)}><option value="show">TV shows</option><option value="genre">Genres</option><option value="playlist">Playlist</option></select></label>
@@ -106,14 +63,14 @@ export function LiveChannelsSettings(){
       {criteriaType!=='playlist'&&selectedValues.length>0&&<div className="live-selected-chips">{selectedValues.map(value=><button type="button" key={value} onClick={()=>toggleValue(value)}>{value}<X size={13}/></button>)}</div>}
       <div className="metadata-actions"><button className="primary" disabled={busy||!name.trim()||selectedCount===0} onClick={()=>void saveChannel()}>{editingId?<Pencil size={17}/>:<Plus size={17}/>} {busy?'Saving…':editingId?'Save channel':'Create channel'}</button>{editingId&&<button onClick={resetBuilder}><X size={16}/>Cancel edit</button>}</div>
     </section>}
-
     <section className="live-channel-settings-list">
       {channels.map(channel=><article className="settings-card live-channel-setting" key={channel.id}>
         <div className="live-channel-setting-art">{channel.artUrl?<img src={resolveMediaUrl(channel.artUrl)} alt=""/>:<Radio size={26}/>}</div>
         <div className="live-channel-setting-copy"><h3>{channel.name}</h3><p>{channelSummary(channel)} · {channel.orderMode==='shuffle'?'Shuffled':'In order'}</p></div>
-        {desktop&&<><button onClick={()=>edit(channel)}><Pencil size={16}/>Edit</button><button onClick={()=>void art(channel)}><Image size={16}/>Artwork</button><button className="danger-text" onClick={()=>void remove(channel)}><Trash2 size={16}/>Delete</button></>}
+        {desktop&&<><button onClick={()=>edit(channel)}><Pencil size={16}/>Edit</button><button onClick={()=>void art(channel)} title="Recommended: 16:9 landscape, 1280×720 or larger. PNG, JPG/JPEG, or WebP."><Image size={16}/>Artwork</button><button className="danger-text" onClick={()=>void remove(channel)}><Trash2 size={16}/>Delete</button></>}
       </article>)}
-      {!channels.length&&<div className="settings-card live-settings-empty"><Shuffle size={24}/><div><strong>No Live Channels yet</strong><p>Create one above. The guide will appear in the main Onyx sidebar.</p></div></div>}
+      {!channels.length&&<div className="settings-card live-settings-empty"><Shuffle size={24}/><div><strong>No Live Channels yet</strong></div></div>}
     </section>
+    {desktop&&<p className="muted">Channel artwork: use a 16:9 landscape image, ideally 1280×720 or 1920×1080. PNG, JPG/JPEG, and WebP are supported.</p>}
   </div>;
 }

@@ -8,6 +8,8 @@ pub struct Settings {
     #[serde(default)] pub movie_path: Option<String>,
     #[serde(default)] pub tv_path: Option<String>,
     #[serde(default)] pub access_password_hash: Option<String>,
+    #[serde(default)] pub setup_complete: bool,
+    #[serde(default)] pub ibroadcast_client_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -15,6 +17,7 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub database_path: PathBuf,
     pub artwork_path: PathBuf,
+    pub provider_path: PathBuf,
     pub settings: Arc<RwLock<Settings>>,
     pub media: Arc<RwLock<Vec<MediaItem>>>,
     pub sessions: Arc<RwLock<HashMap<String, u64>>>,
@@ -22,6 +25,7 @@ pub struct AppState {
 
 pub type Shared = Arc<AppState>;
 
+// Keep the original data directory name so existing Home Media installs migrate into Onyx without losing state.
 pub fn app_data_dir() -> PathBuf { dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("home-media") }
 
 pub fn load_settings(path: &Path) -> Settings { fs::read_to_string(path).ok().and_then(|raw| serde_json::from_str(&raw).ok()).unwrap_or_default() }

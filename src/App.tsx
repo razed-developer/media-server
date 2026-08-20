@@ -17,6 +17,7 @@ import { LiveChannelsView } from './components/LiveChannelsView';
 import { MetadataMatchDialog } from './components/MetadataMatchDialog';
 import { MusicView } from './components/MusicView';
 import { SettingsPage } from './components/SettingsPage';
+import { useOnyxDialog } from './components/OnyxDialogProvider';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -132,6 +133,7 @@ function MetadataSummary({ item }: { item: MediaItem }) {
 
 function App() {
   const isDesktop = isTauriDesktop();
+  const dialog = useOnyxDialog();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [hiddenItems, setHiddenItems] = useState<MediaItem[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -214,7 +216,7 @@ function App() {
   const resetWatched = async (ids: string[]) => { try { setItems(await resetWatchStatus(ids)); if (selected && ids.includes(selected.id)) setSelected(existing => existing ? { ...existing, progressSeconds: 0, lastWatchedAt: undefined } : existing); } catch (cause) { setError(String(cause)); } };
   const hideMedia = async (item: MediaItem, hidden: boolean) => { try { setItems(await setHidden('media', item.id, hidden)); if (hidden && selected?.id === item.id) setSelected(null); await refreshHidden(); } catch (cause) { setError(String(cause)); } };
   const hideShow = async (show: TvShow, hidden: boolean) => { try { let updated = await setHidden('show', show.title, hidden); if (!hidden) for (const episode of show.episodes) updated = await setHidden('media', episode.id, false); setItems(updated); if (hidden && selectedShowTitle === show.title) setSelectedShowTitle(null); await refreshHidden(); } catch (cause) { setError(String(cause)); } };
-  const makePlaylist = async (ids: string[] = []) => { const name = window.prompt('Playlist name:')?.trim(); if (!name) return; try { let updated = await createPlaylist(name); const created = updated.find(p => p.name.toLowerCase() === name.toLowerCase()); if (created) { for (const id of ids) updated = await addToPlaylist(created.id, id); setSelectedPlaylistId(created.id); } setPlaylists(updated); setSection('playlists'); } catch (cause) { setError(String(cause)); } };
+  const makePlaylist = async (ids: string[] = []) => { const name = (await dialog.prompt({title:'New playlist',message:'Give this playlist a name.',label:'Playlist name',placeholder:'Weekend movies',confirmLabel:'Create'}))?.trim(); if (!name) return; try { let updated = await createPlaylist(name); const created = updated.find(p => p.name.toLowerCase() === name.toLowerCase()); if (created) { for (const id of ids) updated = await addToPlaylist(created.id, id); setSelectedPlaylistId(created.id); } setPlaylists(updated); setSection('playlists'); } catch (cause) { setError(String(cause)); } };
   const addIdsToPlaylist = async (playlistId: string, ids: string[]) => { try { let updated = playlists; for (const id of ids) updated = await addToPlaylist(playlistId, id); setPlaylists(updated); } catch (cause) { setError(String(cause)); } };
   const removePlaylistItem = async (playlistId: string, mediaId: string) => { try { setPlaylists(await removeFromPlaylist(playlistId, mediaId)); } catch (cause) { setError(String(cause)); } };
   const removePlaylist = async (playlist: Playlist) => { if (!window.confirm(`Delete playlist “${playlist.name}”?`)) return; try { setPlaylists(await deletePlaylist(playlist.id)); if (selectedPlaylistId === playlist.id) setSelectedPlaylistId(null); } catch (cause) { setError(String(cause)); } };

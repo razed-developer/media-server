@@ -72,7 +72,7 @@ export function LiveChannelsView({media,onOpenSettings}:{media:MediaItem[];onOpe
         return <div className={`guide-row ${tuned?.channel.id===row.channel.id?'tuned':''}`} key={row.channel.id}>
           <button className="guide-channel" onClick={()=>void tune(row)}>
             {(row.channel.artUrl||fallback)?<img src={resolveMediaUrl(row.channel.artUrl||fallback)} alt=""/>:<span className="guide-channel-icon"><Radio size={22}/></span>}
-            <div><strong>{row.channel.name}</strong><small>{row.criteriaLabel??row.channel.criteriaValue}</small></div>
+            <div><strong>{row.channel.name}</strong><small>{row.channel.criteriaType}: {row.channel.criteriaValue}</small></div>
           </button>
           <div className="guide-timeline" onClick={()=>void tune(row)}>
             {row.programs.map((program,index)=>{

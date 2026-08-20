@@ -2,7 +2,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { isTauriDesktop } from './api';
 
 export interface SubtitleProviderStatus{configured:boolean;provider:string;account:string;}
-export interface SubtitleSearchResult{fileId:number;fileName:string;language:string;release:string;hearingImpaired:boolean;downloadCount:number;}
+export interface SubtitleSearchResult{fileId:number;fileName:string;language:string;release:string;hearingImpaired:boolean;downloadCount:number;directMatch:boolean;}
 export interface DownloadedSubtitle{fileName:string;language:string;label:string;url?:string;localPath?:string;}
 
 export async function getSubtitleProviderStatus():Promise<SubtitleProviderStatus>{if(!isTauriDesktop())return{configured:false,provider:'OpenSubtitles',account:''};return invoke<SubtitleProviderStatus>('subtitle_provider_status');}

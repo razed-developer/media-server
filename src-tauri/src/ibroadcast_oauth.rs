@@ -57,19 +57,15 @@ fn store_token(user_id: &str, value: &Value, provider_user: Option<String>) -> R
 }
 
 #[tauri::command]
-pub async fn ibroadcast_device_poll(user_id: String, device_code: String, state: TauriState<'_, Shared>) -> Result<ibroadcast::DevicePollResponse, String> {
+pub async fn ibroadcast_device_poll_compat(user_id: String, device_code: String, state: TauriState<'_, Shared>) -> Result<ibroadcast::DevicePollResponse, String> {
     if !database::user_exists(&state.database_path, &user_id) { return Err("Unknown Onyx user".into()); }
     let id = client_id(&state)?;
 
-    // Current iBroadcast docs specify grant_type=device_code. Some production
-    // OAuth paths have returned “Unauthorized client: grant_type is invalid”.
-    // Cherry Rise previously worked with the RFC 8628 URN, so Onyx only tries
-    // that value when the documented form is explicitly rejected.
     let first = token_attempt(&id, &device_code, "device_code").await;
     let value = match first {
         Ok(value) => value,
         Err(first_error) if first_error.to_ascii_lowercase().contains("grant_type") || first_error.to_ascii_lowercase().contains("unauthorized client") => {
-            activity::warning("iBroadcast", format!("Documented device_code grant was rejected; trying RFC compatibility mode ({first_error})"));
+            activity::warn("iBroadcast", format!("Documented device_code grant was rejected; trying RFC compatibility mode ({first_error})"));
             token_attempt(&id, &device_code, "urn:ietf:params:oauth:grant-type:device_code").await
                 .map_err(|second| format!("iBroadcast rejected both device OAuth grant forms. Documented form: {first_error}. Compatibility form: {second}. Check that the developer app is active/approved and that the Client ID is correct."))?
         }

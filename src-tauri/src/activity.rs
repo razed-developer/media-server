@@ -15,34 +15,19 @@ pub struct ActivityEntry {
 
 static ENTRIES: OnceLock<RwLock<VecDeque<ActivityEntry>>> = OnceLock::new();
 
-fn store() -> &'static RwLock<VecDeque<ActivityEntry>> {
-    ENTRIES.get_or_init(|| RwLock::new(VecDeque::with_capacity(MAX_ENTRIES)))
+fn store() -> &'static RwLock<VecDeque<ActivityEntry>> { ENTRIES.get_or_init(|| RwLock::new(VecDeque::with_capacity(MAX_ENTRIES))) }
+
+pub fn push(level: &str, category: &str, message: impl ToString) {
+    let entry = ActivityEntry { timestamp: Utc::now().timestamp(), level: level.to_string(), category: category.to_string(), message: message.to_string() };
+    if let Ok(mut entries) = store().write() { entries.push_back(entry); while entries.len() > MAX_ENTRIES { entries.pop_front(); } }
 }
 
-pub fn push(level: &str, category: &str, message: impl Into<String>) {
-    let entry = ActivityEntry {
-        timestamp: Utc::now().timestamp(),
-        level: level.to_string(),
-        category: category.to_string(),
-        message: message.into(),
-    };
-    if let Ok(mut entries) = store().write() {
-        entries.push_back(entry);
-        while entries.len() > MAX_ENTRIES { entries.pop_front(); }
-    }
-}
-
-pub fn info(category: &str, message: impl Into<String>) { push("info", category, message); }
-pub fn warn(category: &str, message: impl Into<String>) { push("warning", category, message); }
-pub fn error(category: &str, message: impl Into<String>) { push("error", category, message); }
+pub fn info(category: &str, message: impl ToString) { push("info", category, message); }
+pub fn warn(category: &str, message: impl ToString) { push("warning", category, message); }
+pub fn error(category: &str, message: impl ToString) { push("error", category, message); }
 
 #[tauri::command]
-pub fn activity_entries() -> Vec<ActivityEntry> {
-    store().read().map(|entries| entries.iter().rev().cloned().collect()).unwrap_or_default()
-}
+pub fn activity_entries() -> Vec<ActivityEntry> { store().read().map(|entries| entries.iter().rev().cloned().collect()).unwrap_or_default() }
 
 #[tauri::command]
-pub fn clear_activity() {
-    if let Ok(mut entries) = store().write() { entries.clear(); }
-    info("Activity", "Activity console cleared");
-}
+pub fn clear_activity() { if let Ok(mut entries) = store().write() { entries.clear(); } info("Activity", "Activity console cleared"); }

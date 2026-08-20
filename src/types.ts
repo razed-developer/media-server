@@ -15,6 +15,13 @@ export interface SetupStatus{complete:boolean;moviePath?:string;tvPath?:string;i
 export interface MetadataProviderStatus{provider:string;configured:boolean;enabled:boolean;primary:boolean;attribution:string;}
 export interface MetadataSearchResult{provider:string;providerId:string;entityType:'movie'|'series';title:string;year?:number;overview?:string;posterUrl?:string;backdropUrl?:string;rating?:number;}
 
+export type LiveChannelCriteria='show'|'genre'|'playlist';
+export type LiveChannelOrder='sequential'|'shuffle';
+export interface LiveChannel{id:string;name:string;criteriaType:LiveChannelCriteria;criteriaValue:string;orderMode:LiveChannelOrder;anchorTime:number;createdAt:number;artUrl?:string;}
+export interface LiveChannelInput{id?:string;name:string;criteriaType:LiveChannelCriteria;criteriaValue:string;orderMode:LiveChannelOrder;}
+export interface GuideProgram{mediaId:string;title:string;subtitle?:string;startsAt:number;endsAt:number;offsetSeconds:number;durationSeconds:number;}
+export interface GuideChannel{channel:LiveChannel;current?:GuideProgram;programs:GuideProgram[];}
+
 export interface IbTrack{id:string;title:string;artist:string;artistId?:string;album:string;albumId?:string;durationSeconds:number;artworkUrl?:string;sourcePath?:string;}
 export interface IbAlbum{id:string;name:string;artist:string;artistId?:string;year?:number;trackIds:string[];artworkUrl?:string;}
 export interface IbArtist{id:string;name:string;artworkUrl?:string;}

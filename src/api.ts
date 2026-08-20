@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AnalyticsSummary, AuthStatus, MediaItem, Playlist, ServerStatus, ThemeName, UserPreferences, UserProfile } from './types';
+import type { AnalyticsSummary, AuthStatus, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, MediaItem, Playlist, ServerStatus, SetupStatus, ThemeName, UserPreferences, UserProfile } from './types';
 export interface IdentityInput { title?:string; year?:number; kind?:'movie'|'episode'; showTitle?:string; season?:number; episode?:number; }
 export const isTauriDesktop=()=>Boolean((window as Window&{__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__);
 export const serverBaseUrl=()=>isTauriDesktop()?'http://127.0.0.1:8765':'';
@@ -9,10 +9,13 @@ export const getActiveUserId=()=>activeUserId;
 export const setActiveUserId=(id:string)=>{activeUserId=id;localStorage.setItem('onyx-user',id);};
 const userHeaders=(extra:Record<string,string>={})=>({'x-home-media-user':activeUserId,...extra});
 const browserFetch=(input:string,init?:RequestInit)=>fetch(input,{...init,credentials:'include',headers:{...userHeaders(),...((init?.headers as Record<string,string>|undefined)??{})}});
-async function json<T>(response:Response,message:string):Promise<T>{if(!response.ok)throw new Error(`${message} (${response.status})`);return response.json();}
+async function json<T>(response:Response,message:string):Promise<T>{if(!response.ok){const text=await response.text().catch(()=>"");throw new Error(text||`${message} (${response.status})`);}return response.json();}
 export async function getAuthStatus():Promise<AuthStatus>{if(isTauriDesktop())return{required:false,authenticated:true};return json(await browserFetch(`${serverBaseUrl()}/api/auth/status`),'Could not check authentication');}
 export async function login(password:string):Promise<void>{if(isTauriDesktop())return;const r=await browserFetch(`${serverBaseUrl()}/api/auth/login`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password})});if(!r.ok)throw new Error(r.status===401?'Incorrect password':`Login failed (${r.status})`);}
 export async function logout():Promise<void>{if(!isTauriDesktop())await browserFetch(`${serverBaseUrl()}/api/auth/logout`,{method:'POST'});}
+export async function getSetupStatus():Promise<SetupStatus>{if(!isTauriDesktop())return{complete:true,users:await listUsers()};return invoke<SetupStatus>('setup_status');}
+export async function completeSetup():Promise<void>{if(!isTauriDesktop())return;await invoke('complete_setup');}
+export async function setIbroadcastClientId(clientId:string):Promise<void>{if(!isTauriDesktop())throw new Error('The iBroadcast app client ID is managed from the desktop server.');await invoke('set_ibroadcast_client_id',{clientId});}
 export async function listUsers():Promise<UserProfile[]>{if(isTauriDesktop())return invoke<UserProfile[]>('list_users');return json(await browserFetch(`${serverBaseUrl()}/api/users`),'Could not load users');}
 export async function createUser(name:string):Promise<UserProfile[]>{if(!isTauriDesktop())throw new Error('User management is available from the desktop server app.');return invoke<UserProfile[]>('create_user',{name});}
 export async function deleteUser(userId:string):Promise<UserProfile[]>{if(!isTauriDesktop())throw new Error('User management is available from the desktop server app.');return invoke<UserProfile[]>('delete_user',{userId});}
@@ -40,3 +43,11 @@ export async function clearThumbnailCache():Promise<void>{if(!isTauriDesktop())t
 export async function identifyItem(id:string,identity:IdentityInput):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');await invoke<MediaItem[]>('identify_item',{id,identity});return listMedia();}
 export async function identifyShow(id:string,showTitle:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');await invoke<MediaItem[]>('identify_show',{id,showTitle});return listMedia();}
 export async function resetIdentification(id:string):Promise<MediaItem[]>{if(!isTauriDesktop())throw new Error('Identification corrections are managed from the desktop server app.');await invoke<MediaItem[]>('reset_identification',{id});return listMedia();}
+
+export async function getIbroadcastStatus():Promise<IbConnectionStatus>{if(isTauriDesktop())return invoke<IbConnectionStatus>('ibroadcast_status',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/status`),'Could not check iBroadcast');}
+export async function startIbroadcastDeviceAuth():Promise<IbDeviceCode>{if(isTauriDesktop())return invoke<IbDeviceCode>('ibroadcast_device_start');return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/device/start`,{method:'POST'}),'Could not start iBroadcast authorization');}
+export async function pollIbroadcastDeviceAuth(deviceCode:string):Promise<IbDevicePoll>{if(isTauriDesktop())return invoke<IbDevicePoll>('ibroadcast_device_poll',{userId:activeUserId,deviceCode});return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/device/poll`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deviceCode})}),'Could not finish iBroadcast authorization');}
+export async function syncIbroadcast():Promise<IbLibrary>{if(isTauriDesktop())return invoke<IbLibrary>('ibroadcast_sync',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/sync`,{method:'POST'}),'Could not sync iBroadcast');}
+export async function getIbroadcastLibrary():Promise<IbLibrary>{if(isTauriDesktop())return invoke<IbLibrary>('ibroadcast_library',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/ibroadcast/library`),'Could not load iBroadcast library');}
+export async function disconnectIbroadcast():Promise<void>{if(isTauriDesktop()){await invoke('ibroadcast_disconnect',{userId:activeUserId});return;}const r=await browserFetch(`${serverBaseUrl()}/api/ibroadcast/disconnect`,{method:'POST'});if(!r.ok)throw new Error('Could not disconnect iBroadcast');}
+export const ibroadcastStreamUrl=(trackId:string)=>`${serverBaseUrl()}/api/ibroadcast/stream/${encodeURIComponent(trackId)}`;

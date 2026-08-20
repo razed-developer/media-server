@@ -1,0 +1,245 @@
+use crate::{database, Shared};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use std::{fs, path::{Path, PathBuf}};
+use tauri::State;
+use uuid::Uuid;
+
+const BUILTIN_AVATARS: &[&str] = &["onyx", "moon", "ember", "wave", "forest", "violet", "sun", "ice"];
+const REACTIONS: &[&str] = &["loved", "liked", "laugh", "cry", "scared", "not_for_me"];
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserAvatar {
+    pub user_id: String,
+    pub avatar_id: String,
+    pub custom_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactionEntry {
+    pub user_id: String,
+    pub user_name: String,
+    pub avatar_id: String,
+    pub custom_avatar_url: Option<String>,
+    pub reaction: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationEntry {
+    pub id: String,
+    pub from_user_id: String,
+    pub from_user_name: String,
+    pub target_type: String,
+    pub target_key: String,
+    pub title: String,
+    pub poster_url: Option<String>,
+    pub note: Option<String>,
+    pub created_at: i64,
+    pub read: bool,
+}
+
+pub fn init(path: &Path) -> Result<(), String> {
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS user_profile_extras(
+            user_id TEXT PRIMARY KEY,
+            avatar_id TEXT NOT NULL DEFAULT 'onyx',
+            custom_avatar_path TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS user_reactions(
+            user_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_key TEXT NOT NULL,
+            reaction TEXT NOT NULL,
+            updated_at INTEGER NOT NULL DEFAULT(unixepoch()),
+            PRIMARY KEY(user_id,target_type,target_key),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS user_recommendations(
+            id TEXT PRIMARY KEY,
+            from_user_id TEXT NOT NULL,
+            to_user_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_key TEXT NOT NULL,
+            title TEXT NOT NULL,
+            poster_url TEXT,
+            note TEXT,
+            created_at INTEGER NOT NULL DEFAULT(unixepoch()),
+            read_at INTEGER,
+            FOREIGN KEY(from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(to_user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_reactions_target ON user_reactions(target_type,target_key);
+        CREATE INDEX IF NOT EXISTS idx_user_recommendations_to ON user_recommendations(to_user_id,created_at DESC);"
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn ensure_user(path: &Path, user_id: &str) -> Result<(), String> {
+    if database::user_exists(path, user_id) { Ok(()) } else { Err("User not found".into()) }
+}
+
+fn avatar_from_row(user_id: String, avatar_id: String, custom_path: Option<String>) -> UserAvatar {
+    let custom_url = custom_path.as_ref().map(|_| format!("/api/users/{}/avatar", urlencoding::encode(&user_id)));
+    UserAvatar { user_id, avatar_id, custom_url }
+}
+
+pub fn list_avatars(path: &Path) -> Result<Vec<UserAvatar>, String> {
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT u.id,COALESCE(x.avatar_id,'onyx'),x.custom_avatar_path
+         FROM users u LEFT JOIN user_profile_extras x ON x.user_id=u.id
+         ORDER BY u.is_admin DESC,lower(u.name)"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| Ok(avatar_from_row(row.get(0)?, row.get(1)?, row.get(2)?))).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows { out.push(row.map_err(|e| e.to_string())?); }
+    Ok(out)
+}
+
+pub fn avatar(path: &Path, user_id: &str) -> Result<UserAvatar, String> {
+    ensure_user(path, user_id)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    let row = conn.query_row(
+        "SELECT avatar_id,custom_avatar_path FROM user_profile_extras WHERE user_id=?1",
+        [user_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    ).optional().map_err(|e| e.to_string())?;
+    let (avatar_id, custom_path) = row.unwrap_or_else(|| ("onyx".into(), None));
+    Ok(avatar_from_row(user_id.to_string(), avatar_id, custom_path))
+}
+
+pub fn set_builtin_avatar(path: &Path, user_id: &str, avatar_id: &str) -> Result<UserAvatar, String> {
+    ensure_user(path, user_id)?;
+    if !BUILTIN_AVATARS.contains(&avatar_id) { return Err("Unknown built-in avatar".into()); }
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    let previous: Option<String> = conn.query_row("SELECT custom_avatar_path FROM user_profile_extras WHERE user_id=?1", [user_id], |r| r.get(0)).optional().map_err(|e| e.to_string())?.flatten();
+    conn.execute(
+        "INSERT INTO user_profile_extras(user_id,avatar_id,custom_avatar_path) VALUES(?1,?2,NULL)
+         ON CONFLICT(user_id) DO UPDATE SET avatar_id=excluded.avatar_id,custom_avatar_path=NULL",
+        params![user_id, avatar_id]
+    ).map_err(|e| e.to_string())?;
+    if let Some(old) = previous { let _ = fs::remove_file(old); }
+    avatar(path, user_id)
+}
+
+pub fn set_custom_avatar(database_path: &Path, provider_path: &Path, user_id: &str, source: &str) -> Result<UserAvatar, String> {
+    ensure_user(database_path, user_id)?;
+    let source_path = PathBuf::from(source);
+    if !source_path.is_file() { return Err("Avatar image was not found".into()); }
+    let ext = source_path.extension().and_then(|v| v.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !["png", "jpg", "jpeg", "webp"].contains(&ext.as_str()) { return Err("Choose a PNG, JPG, JPEG, or WebP image".into()); }
+    let dir = provider_path.join("profiles").join(user_id);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for old_ext in ["png", "jpg", "jpeg", "webp"] { let _ = fs::remove_file(dir.join(format!("avatar.{old_ext}"))); }
+    let destination = dir.join(format!("avatar.{ext}"));
+    fs::copy(&source_path, &destination).map_err(|e| format!("Could not copy avatar: {e}"))?;
+    let conn = Connection::open(database_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO user_profile_extras(user_id,avatar_id,custom_avatar_path) VALUES(?1,'custom',?2)
+         ON CONFLICT(user_id) DO UPDATE SET avatar_id='custom',custom_avatar_path=excluded.custom_avatar_path",
+        params![user_id, destination.to_string_lossy().to_string()]
+    ).map_err(|e| e.to_string())?;
+    avatar(database_path, user_id)
+}
+
+pub fn avatar_file(path: &Path, user_id: &str) -> Result<Option<PathBuf>, String> {
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    conn.query_row("SELECT custom_avatar_path FROM user_profile_extras WHERE user_id=?1 AND avatar_id='custom'", [user_id], |r| r.get::<_, Option<String>>(0))
+        .optional().map_err(|e| e.to_string()).map(|v| v.flatten().map(PathBuf::from))
+}
+
+pub fn set_reaction(path: &Path, user_id: &str, target_type: &str, target_key: &str, reaction: Option<&str>) -> Result<Vec<ReactionEntry>, String> {
+    ensure_user(path, user_id)?;
+    if !["movie", "show"].contains(&target_type) { return Err("Invalid reaction target".into()); }
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    if let Some(value) = reaction {
+        if !REACTIONS.contains(&value) { return Err("Unknown reaction".into()); }
+        conn.execute(
+            "INSERT INTO user_reactions(user_id,target_type,target_key,reaction,updated_at) VALUES(?1,?2,?3,?4,unixepoch())
+             ON CONFLICT(user_id,target_type,target_key) DO UPDATE SET reaction=excluded.reaction,updated_at=unixepoch()",
+            params![user_id,target_type,target_key,value]
+        ).map_err(|e| e.to_string())?;
+    } else {
+        conn.execute("DELETE FROM user_reactions WHERE user_id=?1 AND target_type=?2 AND target_key=?3", params![user_id,target_type,target_key]).map_err(|e| e.to_string())?;
+    }
+    reactions(path, target_type, target_key)
+}
+
+pub fn reactions(path: &Path, target_type: &str, target_key: &str) -> Result<Vec<ReactionEntry>, String> {
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT r.user_id,u.name,COALESCE(x.avatar_id,'onyx'),x.custom_avatar_path,r.reaction
+         FROM user_reactions r JOIN users u ON u.id=r.user_id
+         LEFT JOIN user_profile_extras x ON x.user_id=r.user_id
+         WHERE r.target_type=?1 AND r.target_key=?2 ORDER BY lower(u.name)"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params![target_type,target_key], |row| {
+        let user_id: String = row.get(0)?;
+        let custom: Option<String> = row.get(3)?;
+        Ok(ReactionEntry {
+            user_id: user_id.clone(), user_name: row.get(1)?, avatar_id: row.get(2)?,
+            custom_avatar_url: custom.map(|_| format!("/api/users/{}/avatar", urlencoding::encode(&user_id))), reaction: row.get(4)?
+        })
+    }).map_err(|e| e.to_string())?;
+    let mut out = Vec::new(); for row in rows { out.push(row.map_err(|e| e.to_string())?); } Ok(out)
+}
+
+pub fn send_recommendation(path: &Path, from_user_id: &str, to_user_id: &str, target_type: &str, target_key: &str, title: &str, poster_url: Option<&str>, note: Option<&str>) -> Result<(), String> {
+    ensure_user(path, from_user_id)?; ensure_user(path, to_user_id)?;
+    if from_user_id == to_user_id { return Err("Choose another user".into()); }
+    if !["movie", "show"].contains(&target_type) { return Err("Invalid recommendation target".into()); }
+    let id = Uuid::new_v4().to_string();
+    Connection::open(path).map_err(|e| e.to_string())?.execute(
+        "INSERT INTO user_recommendations(id,from_user_id,to_user_id,target_type,target_key,title,poster_url,note) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![id,from_user_id,to_user_id,target_type,target_key,title,poster_url,note]
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn recommendations(path: &Path, user_id: &str) -> Result<Vec<RecommendationEntry>, String> {
+    ensure_user(path, user_id)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT r.id,r.from_user_id,u.name,r.target_type,r.target_key,r.title,r.poster_url,r.note,r.created_at,r.read_at
+         FROM user_recommendations r JOIN users u ON u.id=r.from_user_id
+         WHERE r.to_user_id=?1 ORDER BY r.created_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([user_id], |row| Ok(RecommendationEntry {
+        id: row.get(0)?, from_user_id: row.get(1)?, from_user_name: row.get(2)?, target_type: row.get(3)?, target_key: row.get(4)?, title: row.get(5)?, poster_url: row.get(6)?, note: row.get(7)?, created_at: row.get(8)?, read: row.get::<_, Option<i64>>(9)?.is_some()
+    })).map_err(|e| e.to_string())?;
+    let mut out = Vec::new(); for row in rows { out.push(row.map_err(|e| e.to_string())?); } Ok(out)
+}
+
+pub fn mark_recommendation_read(path: &Path, user_id: &str, id: &str) -> Result<(), String> {
+    Connection::open(path).map_err(|e| e.to_string())?.execute("UPDATE user_recommendations SET read_at=unixepoch() WHERE id=?1 AND to_user_id=?2", params![id,user_id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn user_avatars(state: State<'_, Shared>) -> Result<Vec<UserAvatar>, String> { list_avatars(&state.database_path) }
+
+#[tauri::command]
+pub fn user_avatar_set_builtin(state: State<'_, Shared>, user_id: String, avatar_id: String) -> Result<UserAvatar, String> { set_builtin_avatar(&state.database_path, &user_id, &avatar_id) }
+
+#[tauri::command]
+pub fn user_avatar_set_custom(state: State<'_, Shared>, user_id: String, path: String) -> Result<UserAvatar, String> { set_custom_avatar(&state.database_path, &state.provider_path, &user_id, &path) }
+
+#[tauri::command]
+pub fn user_reactions(state: State<'_, Shared>, target_type: String, target_key: String) -> Result<Vec<ReactionEntry>, String> { reactions(&state.database_path, &target_type, &target_key) }
+
+#[tauri::command]
+pub fn user_reaction_set(state: State<'_, Shared>, user_id: String, target_type: String, target_key: String, reaction: Option<String>) -> Result<Vec<ReactionEntry>, String> { set_reaction(&state.database_path, &user_id, &target_type, &target_key, reaction.as_deref()) }
+
+#[tauri::command]
+pub fn user_recommendation_send(state: State<'_, Shared>, from_user_id: String, to_user_id: String, target_type: String, target_key: String, title: String, poster_url: Option<String>, note: Option<String>) -> Result<(), String> { send_recommendation(&state.database_path, &from_user_id, &to_user_id, &target_type, &target_key, &title, poster_url.as_deref(), note.as_deref()) }
+
+#[tauri::command]
+pub fn user_recommendations(state: State<'_, Shared>, user_id: String) -> Result<Vec<RecommendationEntry>, String> { recommendations(&state.database_path, &user_id) }
+
+#[tauri::command]
+pub fn user_recommendation_mark_read(state: State<'_, Shared>, user_id: String, id: String) -> Result<(), String> { mark_recommendation_read(&state.database_path, &user_id, &id) }

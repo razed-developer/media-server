@@ -1,51 +1,78 @@
-# Home Media
+# Onyx
 
-A deliberately simple Tauri home media server focused on movies and television.
-
-The desktop application manages the server. The same running instance also serves a browser client to other devices on the network.
+Onyx is a deliberately simple Tauri home media server focused on movies and television. One running desktop instance manages the library and serves the same interface to browsers on the network.
 
 ## Current features
 
-- Separate **Movies** and **TV** library folders
-- Separate Movies and TV interfaces
-- TV can be viewed **By season** or as **All episodes**
-- Recursive scanning for MP4, MKV, WebM, M4V, AVI and MOV files
-- TV recognition for `S01E02`, `1x02`, multi-episode and date-based filenames
-- TV folder fallback such as `Show/Season 2/03 Episode.mkv`
-- SQLite-backed library and playback progress
-- FFprobe media inspection when available
+- Home screen with **Continue Watching**, **Recently Added Shows**, and **Recently Added Movies**
+- Separate Movies and TV library folders
+- TV hierarchy: **TV → Show → By season / All episodes**
+- User profiles with individual playback position, history, hidden media, playlists and themes
+- Watched indicators for movies, episodes, seasons and entire shows
+- Small per-user progress bars beneath media
+- Resume from saved position; when less than 10% remains Onyx asks whether to continue or restart
+- User themes: **Onyx** (default), Midnight, Ember and Light
+- Per-user analytics for total time, movies, TV and individual TV shows
+- Recursive media scanning and filename/folder TV recognition
+- Persistent manual identification corrections
+- SQLite-backed library state
+- FFprobe inspection when available
 - Direct Play / Remux / Transcode playback decisions
-- Efficient HTTP range streaming without loading whole movies into RAM
-- FFmpeg remuxing and H.264/AAC transcoding when required
-- External `.vtt` and `.srt` subtitles
-- Embedded subtitle discovery and on-demand WebVTT extraction through FFmpeg
-- Local poster artwork discovery
+- HTTP range streaming for direct play
+- FFmpeg remux/transcode playback
+- External SRT/VTT subtitles and embedded subtitle extraction
+- Local/generated posters, backdrops and episode thumbnails
+- Persistent user playlists
+- Hide/unhide movies, episodes and entire shows
+- Right-click context actions to keep the normal interface uncluttered
+- Keyboard, TV-remote and gamepad directional navigation
+- Frameless Tauri window and true fullscreen mode
 - Browser access from other devices on the LAN
-- Optional password-protected browser access with Argon2 password hashing and HttpOnly sessions
-- LAN browser address shown in the desktop app
-- Windows CI for the frontend, Rust/Tauri compile and Rust tests
+- Optional password-protected browser access using Argon2 and HttpOnly sessions
 
 ## Browser access
 
-The media server listens on port `8765`.
-
-The desktop app displays the LAN address that another device should open. It will look similar to:
+Onyx listens on port `8765`. The desktop app displays a LAN URL similar to:
 
 ```text
 http://192.168.1.123:8765
 ```
 
-During `npm run tauri dev`, port 8765 redirects browser clients to the development Vite server on port 1420. Packaged builds serve the compiled React client directly from port 8765.
+During `npm run tauri dev`, browser clients are redirected to the Vite development client. Packaged builds serve the compiled React UI directly from port `8765`.
 
-Browser clients can browse, search, play media, use subtitles and save playback progress. Filesystem/library administration remains available only in the desktop Tauri application.
+## User profiles
 
-### Browser access password
+The first profile is **Owner**. Additional profiles can be created from the desktop application.
 
-From the desktop app, choose **Set access password**. Passwords must be at least 8 characters. Home Media stores only an Argon2 password hash.
+Each profile stores its own:
 
-Remote browser clients then see a simple login screen. Successful logins receive a 30-day HttpOnly, SameSite=Lax session cookie. Changing or removing the access password invalidates all existing sessions.
+- playback position and watch history
+- watched/progress state
+- hidden media
+- playlists
+- theme
+- viewing analytics
 
-Connections coming from the local machine's loopback interface are exempt so the Tauri desktop player continues to work without logging into its own server.
+Profiles currently sit behind the server's shared browser-access password; profile-specific PINs/passwords can be added later.
+
+## Watched state
+
+A movie or episode is considered watched once at least 90% has been played. Seasons and shows are watched when all of their episodes meet that threshold.
+
+Resetting watch status removes the saved playback position for the selected movie, episode, season, or show and immediately clears the corresponding watched indicator.
+
+## Analytics
+
+Onyx records accumulated viewing time independently from playback position, allowing a user to seek without artificially inflating time watched.
+
+Current breakdowns include:
+
+- total time
+- movie time
+- TV time
+- time by TV show
+
+Genre analytics require reliable genre metadata, so they are deferred until a metadata provider is added.
 
 ## Library layout
 
@@ -58,17 +85,7 @@ Movies/
   Arrival (2016).jpg
 ```
 
-Local movie artwork is discovered from a matching filename, `poster.jpg`, `folder.jpg`, or `cover.jpg`.
-
-TV supports filename-based identification:
-
-```text
-TV/
-  Severance/
-    Severance S01E02 Half Loop.mkv
-```
-
-It also supports folder-assisted identification:
+TV supports filename and folder-assisted identification:
 
 ```text
 TV/
@@ -81,33 +98,39 @@ TV/
 
 ## FFmpeg
 
-FFprobe is used during scans to inspect codecs, duration, resolution and embedded subtitle streams. FFmpeg is used when a file needs remuxing/transcoding or an embedded subtitle needs extraction.
+FFprobe is used during scans to inspect codecs, duration, resolution and embedded subtitles. FFmpeg handles remux/transcode playback, generated artwork and embedded-subtitle extraction.
 
-On Windows, one option is:
+On Windows:
 
 ```powershell
 winget install Gyan.FFmpeg
 ```
 
-Verify afterwards:
+Then verify:
 
 ```powershell
 ffprobe -version
 ffmpeg -version
 ```
 
-Home Media still scans files without FFmpeg/FFprobe, but incompatible playback and embedded subtitles require FFmpeg.
+## iBroadcast
+
+A proposed per-user iBroadcast integration is documented in:
+
+```text
+docs/IBROADCAST-INTEGRATION.md
+```
+
+The design uses iBroadcast's current OAuth 2.0 API and keeps provider tokens server-side. Device-code authorization is a particularly good fit for TV/couch use.
 
 ## Development
-
-Install the Tauri 2, Rust and Node.js prerequisites, then run:
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Build an installer with:
+Build:
 
 ```bash
 npm run tauri build
@@ -115,18 +138,13 @@ npm run tauri build
 
 ## Security
 
-Password protection prevents unauthenticated remote browser access to the library, media, artwork, subtitle and progress routes. The browser session cookie is HttpOnly and SameSite=Lax. The desktop app's loopback connection remains trusted locally.
-
-**Do not port-forward port 8765 directly to the public internet.** The built-in server is still plain HTTP, so a password alone does not protect credentials and session cookies in transit.
-
-For outside-network access today, use Home Media over a private encrypted network such as Tailscale. An HTTPS reverse-proxy deployment is also appropriate once configured securely. Native HTTPS/domain configuration can be added later.
+**Do not directly port-forward port 8765 to the public internet.** The built-in server is plain HTTP. For outside-network access, use a private encrypted network such as Tailscale or a correctly configured HTTPS reverse proxy.
 
 ## Near-term roadmap
 
-- Tailscale/HTTPS remote-access setup and documentation
-- Better transcoding seek/resume through segmented playback
-- Optional metadata provider integration
-- Manual metadata correction
-- Automatic library watching/rescans
-- Additional poster/backdrop handling
-- Multiple named users/profiles if needed
+- HLS/segmented transcoding for better seeking and remote quality selection
+- online metadata matching/artwork provider
+- genre-aware analytics
+- automatic filesystem watching/rescans
+- profile PINs/passwords if desired
+- implement the documented iBroadcast OAuth/library/playback integration

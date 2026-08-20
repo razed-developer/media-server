@@ -1,12 +1,12 @@
-export type MediaKind = 'movie' | 'episode';
-export type PlaybackMode = 'directPlay' | 'remux' | 'transcode';
-export interface SubtitleTrack { label:string; language:string; url?:string; streamIndex?:number; embedded:boolean; format?:string; forced:boolean; default:boolean; }
-export interface MediaItem {
-  id:string; title:string; year?:number; kind:MediaKind; showTitle?:string; season?:number; episode?:number; episodeEnd?:number;
-  path:string; streamUrl:string; posterUrl?:string; backdropUrl?:string; thumbnailUrl?:string; subtitles:SubtitleTrack[];
-  progressSeconds:number; lastWatchedAt?:number; durationSeconds?:number; container?:string; videoCodec?:string; audioCodec?:string; width?:number; height?:number; playbackMode:PlaybackMode;
-}
-export interface UserProfile { id:string; name:string; isAdmin:boolean; }
-export interface Playlist { id:string; name:string; mediaIds:string[]; }
-export interface ServerStatus { running:boolean; localUrl:string; libraryPath?:string; moviePath?:string; tvPath?:string; itemCount:number; ffprobeAvailable:boolean; ffmpegAvailable:boolean; accessPasswordSet?:boolean; artworkCacheBytes?:number; }
-export interface AuthStatus { required:boolean; authenticated:boolean; }
+export type MediaKind='movie'|'episode';
+export type PlaybackMode='directPlay'|'remux'|'transcode';
+export type ThemeName='onyx'|'midnight'|'ember'|'light';
+export interface SubtitleTrack{label:string;language:string;url?:string;streamIndex?:number;embedded:boolean;format?:string;forced:boolean;default:boolean;}
+export interface MediaItem{id:string;title:string;year?:number;kind:MediaKind;showTitle?:string;season?:number;episode?:number;episodeEnd?:number;path:string;streamUrl:string;posterUrl?:string;backdropUrl?:string;thumbnailUrl?:string;subtitles:SubtitleTrack[];progressSeconds:number;durationSeconds?:number;container?:string;videoCodec?:string;audioCodec?:string;width?:number;height?:number;playbackMode:PlaybackMode;addedAt?:number;lastWatchedAt?:number;}
+export interface UserProfile{id:string;name:string;isAdmin:boolean;}
+export interface UserPreferences{theme:ThemeName;}
+export interface Playlist{id:string;name:string;mediaIds:string[];}
+export interface AnalyticsEntry{label:string;seconds:number;}
+export interface AnalyticsSummary{totalSeconds:number;movieSeconds:number;tvSeconds:number;shows:AnalyticsEntry[];}
+export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;}
+export interface AuthStatus{required:boolean;authenticated:boolean;}

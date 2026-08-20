@@ -6,6 +6,8 @@ import { installRemoteNavigation } from './remoteNavigation';
 import './styles.css';
 import './media.css';
 import './onyx-features.css';
+import './libraryCompact.css';
+import './liveChannels.css';
 import './remote.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

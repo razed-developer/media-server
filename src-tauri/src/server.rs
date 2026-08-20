@@ -217,6 +217,7 @@ pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
         .route("/api/ibroadcast/stream/{track_id}", get(api_ibroadcast_stream)).route("/api/metadata/image/{size}/{file}", get(metadata_image))
         .route("/play/{id}", get(play_media)).route("/stream/{id}", get(stream_media)).route("/art/{id}/{kind}", get(artwork_route))
         .route("/subtitle/{id}/embedded/{stream_index}", get(embedded_subtitle)).route("/subtitle/{id}/{filename}", get(subtitle))
+        .merge(crate::live_server::router())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
     let user_header = HeaderName::from_static(USER_HEADER);
     let cors = CorsLayer::new().allow_origin(AllowOrigin::mirror_request()).allow_methods([Method::GET, Method::POST]).allow_headers([header::CONTENT_TYPE, header::RANGE, user_header]).allow_credentials(true);

@@ -1,0 +1,34 @@
+.page-heading{
+  padding:26px 0 14px;
+  border-bottom:1px solid var(--line);
+}
+.page-heading .eyebrow{margin:0 0 5px}
+.page-heading h1{
+  margin:0 0 3px;
+  font-size:1.45rem;
+  line-height:1.05;
+  letter-spacing:-.025em;
+}
+.page-heading>p:last-child{margin:0;color:var(--muted);font-size:.86rem}
+.page-heading+.gallery{padding-top:18px}
+.gallery{
+  grid-template-columns:repeat(auto-fill,minmax(155px,1fr));
+  gap:22px 20px;
+  padding-top:22px;
+}
+.media-card h3{margin:7px 0 2px;font-size:.94rem}
+.media-card p{font-size:.78rem}
+.media-card>.mini-progress{margin-top:4px}
+.show-gallery .show-card .poster{aspect-ratio:2/3}
+.playlist-grid{padding-top:20px}
+.playlist-back{margin-top:18px}
+.subsection-title{margin:28px 0 0}
+
+@media(min-width:1450px){
+  .gallery{grid-template-columns:repeat(auto-fill,minmax(165px,1fr))}
+}
+
+@media(max-width:850px){
+  .page-heading{padding:20px 0 12px}
+  .gallery{grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:18px 14px}
+}

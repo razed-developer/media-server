@@ -1,6 +1,6 @@
 use crate::models::{ProbeResult, ProbeSubtitle};
 use serde_json::Value;
-use std::{path::Path, process::Command};
+use std::path::Path;
 
 pub fn inspect(path: &Path) -> ProbeResult {
     let output = crate::child_process::command("ffprobe")

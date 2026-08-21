@@ -8,6 +8,7 @@ const mediaProxy = {
 
 export default defineConfig({
   plugins: [react()],
+  publicDir: 'logos',
   clearScreen: false,
   server: {
     host: '0.0.0.0',

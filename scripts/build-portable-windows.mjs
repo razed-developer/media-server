@@ -7,6 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 const cargoRelease = resolve(root, 'src-tauri', 'target', 'release');
 const webSource = resolve(root, 'src-tauri', 'web');
 const releaseRoot = resolve(root, 'release');
+const tauriCli = resolve(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 
 function run(command, args) {
   return new Promise((resolveRun, reject) => {
@@ -32,7 +33,7 @@ const archivePath = resolve(releaseRoot, `${artifactName}.zip`);
 const executableSource = resolve(cargoRelease, 'media-server.exe');
 const executableTarget = resolve(outputDir, 'Onyx.exe');
 
-await run('npx.cmd', ['tauri', 'build', '--no-bundle']);
+await run(process.execPath, [tauriCli, 'build', '--no-bundle']);
 
 await rm(outputDir, { recursive: true, force: true });
 await rm(archivePath, { force: true });

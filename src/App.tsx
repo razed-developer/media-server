@@ -17,6 +17,7 @@ import { listUserAvatars, type RecommendationEntry, type UserAvatar } from './us
 import { LiveChannelsView } from './components/LiveChannelsView';
 import { MetadataMatchDialog } from './components/MetadataMatchDialog';
 import { MusicView } from './components/MusicView';
+import { preloadMusicLibrary } from './musicLibraryCache';
 import { RecommendationsRail } from './components/RecommendationsRail';
 import { SettingsPage } from './components/SettingsPage';
 import { SocialBar } from './components/SocialBar';
@@ -216,7 +217,15 @@ function App() {
   const showEpisodes = useMemo(() => selectedShow?.episodes.filter(i => !normalizedQuery || `${i.title} ${i.season ?? ''} ${i.episode ?? ''}`.toLowerCase().includes(normalizedQuery)) ?? [], [selectedShow, normalizedQuery]);
   const seasonGroups = useMemo(() => { const groups = new Map<number, MediaItem[]>(); for (const item of showEpisodes) { const season = item.season ?? 0; groups.set(season, [...(groups.get(season) ?? []), item]); } return [...groups.entries()].sort(([a], [b]) => a - b).map(([season, group]) => ({ season, items: group })); }, [showEpisodes]);
 
-  const switchUser = async (id: string) => { setActiveUserId(id); setActiveUserState(id); setProfileMenu(false); setSelected(null); setPausedMedia(null); setSelectedShowTitle(null); setSelectedPlaylistId(null); setSection('home'); setQuery(''); await refresh(); };
+  const switchUser = async (id: string) => {
+    if (id === activeUserId) { setProfileMenu(false); return; }
+    const name = users.find(user => user.id === id)?.name ?? 'profile';
+    window.dispatchEvent(new CustomEvent('onyx-profile-loading', { detail: { name } }));
+    setActiveUserId(id); setActiveUserState(id); setProfileMenu(false); setSelected(null); setPausedMedia(null); setSelectedShowTitle(null); setSelectedPlaylistId(null); setSection('home'); setQuery('');
+    try { await Promise.all([refresh(), preloadMusicLibrary(id)]); }
+    catch (cause) { setError(String(cause)); }
+    finally { window.dispatchEvent(new Event('onyx-profile-ready')); }
+  };
   const openHidden = async () => { try { const [visible, all] = await Promise.all([listMedia(false), listMedia(true)]); const visibleIds = new Set(visible.map(i => i.id)); setHiddenItems(all.filter(i => !visibleIds.has(i.id))); setProfileMenu(false); setSection('hidden'); } catch (cause) { setError(String(cause)); } };
   const refreshHidden = async () => { if (section !== 'hidden') return; const [visible, all] = await Promise.all([listMedia(false), listMedia(true)]); const visibleIds = new Set(visible.map(i => i.id)); setItems(visible); setHiddenItems(all.filter(i => !visibleIds.has(i.id))); };
   const openMenu = (event: ReactMouseEvent, target: MenuTarget, hiddenView = false) => { event.preventDefault(); event.stopPropagation(); setContextMenu({ x: Math.min(event.clientX, window.innerWidth - 250), y: Math.min(event.clientY, window.innerHeight - 400), target, hiddenView }); };

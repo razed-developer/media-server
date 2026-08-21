@@ -33,8 +33,7 @@ import './continuityPolish.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <OnyxDialogProvider>
-      <SetupGate><App /></SetupGate>
-      <StartupWarmup />
+      <SetupGate><StartupWarmup><App /></StartupWarmup></SetupGate>
       <BrandingEnhancer />
       <QuickLibraryRefresh />
       <LibraryJumpBridge />

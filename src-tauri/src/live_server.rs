@@ -50,7 +50,7 @@ fn find_item(state:&crate::AppState,media_id:&str)->Option<MediaItem>{state.medi
 async fn ffmpeg_offset(item:MediaItem,offset:u64,preserve_timeline:bool,category:&str)->Response{
     activity::info(category, format!("Opening {} at {} seconds", item.title, offset));
     let offset_arg=offset.to_string();
-    let mut command=Command::new("ffmpeg");
+    let mut command=crate::child_process::async_command("ffmpeg");
     command.kill_on_drop(true).args(["-hide_banner","-loglevel","error","-ss"]).arg(&offset_arg).arg("-i").arg(&item.path).args(["-map","0:v:0","-map","0:a:0?"]);
     if item.playback_mode=="transcode"{command.args(["-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","192k"]);}else{command.args(["-c:v","copy","-c:a","copy"]);}
     if preserve_timeline{command.args(["-output_ts_offset"]).arg(&offset_arg);}

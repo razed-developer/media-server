@@ -1,8 +1,9 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ImagePlus } from 'lucide-react';
-import onyxMark from '../../logos/app-icon.png';
 import { BUILTIN_AVATARS, chooseCustomAvatar, setBuiltinUserAvatar, setCustomUserAvatar, type UserAvatar } from '../userFeaturesApi';
 import '../userFeatures.css';
+
+const onyxMark='/app-icon.png';
 
 const avatarLabels:Record<string,string>={
  onyx:'Slate',

@@ -281,6 +281,11 @@ pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String
 }
 
 #[tauri::command]
+pub fn library_scan_progress(state: TauriState<'_, Shared>) -> Result<ScanProgress, String> {
+    state.scan_progress.read().map(|progress| progress.clone()).map_err(|_| "Scan progress lock poisoned".into())
+}
+
+#[tauri::command]
 pub async fn scan_library(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
     let shared = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || scan(&shared))

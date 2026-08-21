@@ -1,11 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { BrandingEnhancer } from './components/BrandingEnhancer';
 import { FullscreenGuard } from './components/FullscreenGuard';
 import { LibraryJumpBridge } from './components/LibraryJumpBridge';
 import { OnyxDialogProvider } from './components/OnyxDialogProvider';
 import { PlayerEpisodeSocial } from './components/PlayerEpisodeSocial';
+import { PlayerPlaybackEnhancer } from './components/PlayerPlaybackEnhancer';
 import { PlayerSubtitleSearch } from './components/PlayerSubtitleSearch';
+import { QuickLibraryRefresh } from './components/QuickLibraryRefresh';
 import { SetupGate } from './components/SetupGate';
 import { StartupWarmup } from './components/StartupWarmup';
 import { installRemoteNavigation } from './remoteNavigation';
@@ -24,14 +27,18 @@ import './remote.css';
 import './subtitleFinder.css';
 import './playbackContinuity.css';
 import './startupWarmup.css';
+import './continuityPolish.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <OnyxDialogProvider>
       <SetupGate><App /></SetupGate>
       <StartupWarmup />
+      <BrandingEnhancer />
+      <QuickLibraryRefresh />
       <LibraryJumpBridge />
       <FullscreenGuard />
+      <PlayerPlaybackEnhancer />
       <PlayerSubtitleSearch />
       <PlayerEpisodeSocial />
     </OnyxDialogProvider>

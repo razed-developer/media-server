@@ -60,4 +60,22 @@ pub async fn hydrate_series_children(db:&Path,series_id:&str,provider_id:&str)->
 fn normalize(value:&str)->String{value.to_lowercase().chars().map(|c|if c.is_alphanumeric(){c}else{' '}).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")}
 fn confidence(query:&str,year:Option<u16>,result:&MetadataSearchResult)->f64{let a=normalize(query);let b=normalize(&result.title);let title:f64=if a==b{0.88}else if a.contains(&b)||b.contains(&a){0.72}else{0.45};let year_score:f64=match(year,result.year){(Some(a),Some(b))if a==b=>0.10,(Some(a),Some(b))if a.abs_diff(b)<=1=>0.04,(None,_)=>0.02,_=>0.0};(title+year_score).min(0.98_f64)}
 
-pub async fn auto_match(db:&Path,media_id:&str)->Result<bool,String>{let entity=entity_for_media(db,media_id)?.ok_or("Metadata entity missing")?;let target=if entity.entity_type=="movie"{entity.clone()}else{series_for_media(db,media_id)?.ok_or("Series entity missing")?};if provider_match(db,&target.id,"tmdb")?.is_some(){return Ok(false)}let results=search(&target.entity_type,&target.title,target.year).await?;let Some(best)=results.into_iter().map(|result|{let score=confidence(&target.title,target.year,&result);(result,score)}).max_by(|a,b|a.1.total_cmp(&b.1))else{return Ok(false)};if best.1<0.90{activity::warn("Metadata",format!("No high-confidence TMDB match for “{}” (best {:.0}%)",target.title,best.1*100.0));return Ok(false)}activity::info("Metadata",format!("Auto-match accepted “{}” → “{}” ({:.0}%)",target.title,best.0.title,best.1*100.0));apply_match(db,media_id,&best.0.provider_id,"automatic",false).await?;let updated=if target.entity_type=="movie"{entity_for_media(db,media_id)?.unwrap()}else{series_for_media(db,media_id)?.unwrap()};set_provider_match(db,&ProviderMatch{entity_id:updated.id,provider:"tmdb".into(),provider_id:best.0.provider_id,matched_by:"automatic".into(),confidence:Some(best.1),locked:false})?;Ok(true)}
+pub async fn auto_match(db:&Path,media_id:&str)->Result<bool,String>{
+ let entity=entity_for_media(db,media_id)?.ok_or("Metadata entity missing")?;
+ let target=if entity.entity_type=="movie"{entity.clone()}else{series_for_media(db,media_id)?.ok_or("Series entity missing")?};
+ if let Some(existing)=provider_match(db,&target.id,"tmdb")?{
+   // A filesystem rescan can introduce new local episode entities even when the
+   // show match is already correct. Refresh the children so those episodes get
+   // their real TMDB names/stills without forcing the user to Fix Match again.
+   if target.entity_type!="movie"{hydrate_series_children(db,&target.id,&existing.provider_id).await?;}
+   return Ok(false)
+ }
+ let results=search(&target.entity_type,&target.title,target.year).await?;
+ let Some(best)=results.into_iter().map(|result|{let score=confidence(&target.title,target.year,&result);(result,score)}).max_by(|a,b|a.1.total_cmp(&b.1))else{return Ok(false)};
+ if best.1<0.90{activity::warn("Metadata",format!("No high-confidence TMDB match for “{}” (best {:.0}%)",target.title,best.1*100.0));return Ok(false)}
+ activity::info("Metadata",format!("Auto-match accepted “{}” → “{}” ({:.0}%)",target.title,best.0.title,best.1*100.0));
+ apply_match(db,media_id,&best.0.provider_id,"automatic",false).await?;
+ let updated=if target.entity_type=="movie"{entity_for_media(db,media_id)?.unwrap()}else{series_for_media(db,media_id)?.unwrap()};
+ set_provider_match(db,&ProviderMatch{entity_id:updated.id,provider:"tmdb".into(),provider_id:best.0.provider_id,matched_by:"automatic".into(),confidence:Some(best.1),locked:false})?;
+ Ok(true)
+}

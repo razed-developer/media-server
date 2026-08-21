@@ -8,7 +8,6 @@ use axum::{
     Json, Router,
 };
 use std::process::Stdio;
-use tokio::process::Command;
 use tokio_util::io::ReaderStream;
 
 const USER_HEADER: &str = "x-home-media-user";

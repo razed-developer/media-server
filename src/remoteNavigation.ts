@@ -17,5 +17,27 @@ function normalizeDirection(key:string):Direction|null{if(key==='ArrowUp'||key==
 function onKeyDown(event:KeyboardEvent){if(event.altKey||event.ctrlKey||event.metaKey)return;if(['Escape','BrowserBack','GoBack','Back'].includes(event.key)||(event.key==='Backspace'&&!isTextControl(document.activeElement))){if(closeTopLayer()){event.preventDefault();event.stopPropagation()}return}if(activeVideo()&&handleVideoRemote(event)){event.preventDefault();event.stopPropagation();return}const active=document.activeElement,direction=normalizeDirection(event.key);if(direction&&!isTextControl(active)&&!(active instanceof HTMLVideoElement)){event.preventDefault();moveFocus(direction);return}if(['Enter',' ','Select','Accept'].includes(event.key)&&active instanceof HTMLElement&&active.matches(CARD_SELECTOR)){event.preventDefault();active.click()}}
 function refreshFocusableElements(root:ParentNode=document){root.querySelectorAll<HTMLElement>(`${CARD_SELECTOR},video`).forEach(prepareElement)}
 function pressed(button:GamepadButton|undefined){return Boolean(button?.pressed||(button?.value??0)>.5)}
-function installGamepadNavigation(){if(!('getGamepads'in navigator))return()=>{};let frame=0,lastActionAt=0,previousSelect=false,previousBack=false;const repeatMs=180;const tick=(now:number)=>{const pad=Array.from(navigator.getGamepads?.()??[]).find(Boolean);if(pad){const up=pressed(pad.buttons[12])||(pad.axes[1]??0)<-.65,down=pressed(pad.buttons[13])||(pad.axes[1]??0)>.65,left=pressed(pad.buttons[14])||(pad.axes[0]??0)<-.65,right=pressed(pad.buttons[15])||(pad.axes[0]??0)>.65,select=pressed(pad.buttons[0]),back=pressed(pad.buttons[1])||pressed(pad.buttons[8]);if(now-lastActionAt>=repeatMs){const video=activeVideo();if(up){if(!(video&&controlVideo('up')))moveFocus('up');lastActionAt=now}else if(down){if(!(video&&controlVideo('down')))moveFocus('down');lastActionAt=now}else if(left){if(!(video&&controlVideo('left')))moveFocus('left');lastActionAt=now}else if(right){if(!(video&&controlVideo('right')))moveFocus('right');lastActionAt=now}}if(select&&!previousSelect){if(!(activeVideo()&&controlVideo('toggle')))selectFocused()}if(back&&!previousBack)closeTopLayer();previousSelect=select;previousBack=back}else{previousSelect=false;previousBack=false}frame=requestAnimationFrame(tick)};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame)}
+
+function installGamepadNavigation(){
+ if(!('getGamepads'in navigator))return()=>{};
+ let frame=0,lastActionAt=0,previousSelect=false,previousBack=false,running=false;
+ const repeatMs=180;
+ const hasGamepad=()=>Array.from(navigator.getGamepads?.()??[]).some(Boolean);
+ const tick=(now:number)=>{
+   if(!running)return;
+   const pad=Array.from(navigator.getGamepads?.()??[]).find(Boolean);
+   if(!pad){running=false;frame=0;previousSelect=false;previousBack=false;return;}
+   const up=pressed(pad.buttons[12])||(pad.axes[1]??0)<-.65,down=pressed(pad.buttons[13])||(pad.axes[1]??0)>.65,left=pressed(pad.buttons[14])||(pad.axes[0]??0)<-.65,right=pressed(pad.buttons[15])||(pad.axes[0]??0)>.65,select=pressed(pad.buttons[0]),back=pressed(pad.buttons[1])||pressed(pad.buttons[8]);
+   if(now-lastActionAt>=repeatMs){const video=activeVideo();if(up){if(!(video&&controlVideo('up')))moveFocus('up');lastActionAt=now}else if(down){if(!(video&&controlVideo('down')))moveFocus('down');lastActionAt=now}else if(left){if(!(video&&controlVideo('left')))moveFocus('left');lastActionAt=now}else if(right){if(!(video&&controlVideo('right')))moveFocus('right');lastActionAt=now}}
+   if(select&&!previousSelect){if(!(activeVideo()&&controlVideo('toggle')))selectFocused()}if(back&&!previousBack)closeTopLayer();previousSelect=select;previousBack=back;frame=requestAnimationFrame(tick)
+ };
+ const start=()=>{if(running||!hasGamepad())return;running=true;frame=requestAnimationFrame(tick)};
+ const stopIfEmpty=()=>{if(hasGamepad())return;running=false;if(frame)cancelAnimationFrame(frame);frame=0;previousSelect=false;previousBack=false};
+ window.addEventListener('gamepadconnected',start);
+ window.addEventListener('gamepaddisconnected',stopIfEmpty);
+ // A controller can already be connected before listeners are installed.
+ start();
+ return()=>{running=false;if(frame)cancelAnimationFrame(frame);window.removeEventListener('gamepadconnected',start);window.removeEventListener('gamepaddisconnected',stopIfEmpty)};
+}
+
 export function installRemoteNavigation(){refreshFocusableElements();document.addEventListener('keydown',onKeyDown,true);const stopGamepad=installGamepadNavigation();const observer=new MutationObserver(mutations=>{for(const mutation of mutations)for(const node of mutation.addedNodes){if(!(node instanceof HTMLElement))continue;if(node.matches(`${CARD_SELECTOR},video`))prepareElement(node);refreshFocusableElements(node);const video=node.matches('.player-page')?node.querySelector<HTMLVideoElement>('video'):node.querySelector<HTMLVideoElement>('.player-page video');if(video)requestAnimationFrame(()=>video.focus({preventScroll:true}))}});observer.observe(document.body,{childList:true,subtree:true});return()=>{observer.disconnect();stopGamepad();document.removeEventListener('keydown',onKeyDown,true)}}

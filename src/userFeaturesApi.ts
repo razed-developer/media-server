@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { isTauriDesktop } from './api';
+import { getActiveUserId, isTauriDesktop, serverBaseUrl } from './api';
 import type { MetadataSearchResult } from './types';
 
 export type SocialTargetType='movie'|'show'|'episode';
@@ -8,6 +8,9 @@ export interface ReactionEntry { userId:string; userName:string; avatarId:string
 export interface RecommendationEntry { id:string; fromUserId:string; fromUserName:string; targetType:SocialTargetType; targetKey:string; title:string; posterUrl?:string; note?:string; createdAt:number; read:boolean; }
 export interface WishlistEntry { id:string; userId:string; userName:string; mediaType:'movie'|'series'; provider:string; providerId:string; title:string; year?:number; posterUrl?:string; overview?:string; status:'requested'|'approved'|'declined'|'added'; requestedAt:number; }
 export interface HouseholdFeedEntry { id:string; kind:'reaction'|'request'; userId:string; userName:string; avatarId:string; customAvatarUrl?:string; reaction?:string; title:string; mediaType?:string; createdAt:number; }
+
+const browserFetch=(path:string,init?:RequestInit)=>fetch(`${serverBaseUrl()}${path}`,{...init,credentials:'include',headers:{'x-home-media-user':getActiveUserId(),...((init?.headers as Record<string,string>|undefined)??{})}});
+async function browserJson<T>(response:Response,message:string):Promise<T>{if(!response.ok){const text=await response.text().catch(()=>"");throw new Error(text||`${message} (${response.status})`)}return response.json()}
 
 export const BUILTIN_AVATARS=['onyx','moon','ember','wave','forest','violet','sun','ice'] as const;
 export async function listUserAvatars():Promise<UserAvatar[]>{if(!isTauriDesktop())return[];return invoke<UserAvatar[]>('user_avatars');}
@@ -19,8 +22,8 @@ export async function setReaction(userId:string,targetType:SocialTargetType,targ
 export async function sendRecommendation(fromUserId:string,toUserId:string,targetType:SocialTargetType,targetKey:string,title:string,posterUrl?:string,note?:string):Promise<void>{if(!isTauriDesktop())throw new Error('Recommendations are currently available from the desktop server app.');await invoke('user_recommendation_send',{fromUserId,toUserId,targetType,targetKey,title,posterUrl:posterUrl??null,note:note??null});}
 export async function listRecommendations(userId:string):Promise<RecommendationEntry[]>{if(!isTauriDesktop())return[];return invoke<RecommendationEntry[]>('user_recommendations',{userId});}
 export async function markRecommendationRead(userId:string,id:string):Promise<void>{if(!isTauriDesktop())return;await invoke('user_recommendation_mark_read',{userId,id});}
-export async function searchWishlistTmdb(kind:'movie'|'series',query:string):Promise<MetadataSearchResult[]>{if(!isTauriDesktop())return[];return invoke<MetadataSearchResult[]>('user_wishlist_search',{kind,query});}
-export async function addWishlistItem(userId:string,item:MetadataSearchResult):Promise<void>{if(!isTauriDesktop())throw new Error('Wishlist changes are currently available from the desktop server app.');await invoke('user_wishlist_add',{userId,item});window.dispatchEvent(new Event('onyx-household-feed-changed'));}
+export async function searchWishlistTmdb(kind:'movie'|'series',query:string):Promise<MetadataSearchResult[]>{if(isTauriDesktop())return invoke<MetadataSearchResult[]>('user_wishlist_search',{kind,query});return browserJson(await browserFetch('/api/user-features/wishlist/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,query})}),'Could not search TMDB');}
+export async function addWishlistItem(userId:string,item:MetadataSearchResult):Promise<void>{if(isTauriDesktop())await invoke('user_wishlist_add',{userId,item});else{const response=await browserFetch('/api/user-features/wishlist/add',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({item})});if(!response.ok)throw new Error(await response.text().catch(()=>`Could not request media (${response.status})`));}window.dispatchEvent(new Event('onyx-household-feed-changed'));}
 export async function listWishlist(userId:string,household=false):Promise<WishlistEntry[]>{if(!isTauriDesktop())return[];return invoke<WishlistEntry[]>('user_wishlist_list',{userId,household});}
 export async function setWishlistStatus(adminUserId:string,id:string,status:'requested'|'approved'|'declined'):Promise<void>{if(!isTauriDesktop())throw new Error('Wishlist administration is currently available from the desktop server app.');await invoke('user_wishlist_set_status',{adminUserId,id,status});}
-export async function listHouseholdFeed(limit=24):Promise<HouseholdFeedEntry[]>{if(!isTauriDesktop())return[];return invoke<HouseholdFeedEntry[]>('household_feed',{limit});}
+export async function listHouseholdFeed(limit=24):Promise<HouseholdFeedEntry[]>{if(isTauriDesktop())return invoke<HouseholdFeedEntry[]>('household_feed',{limit});return browserJson(await browserFetch('/api/user-features/feed'),'Could not load household activity');}

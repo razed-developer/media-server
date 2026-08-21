@@ -9,9 +9,14 @@ const webSource = resolve(root, 'src-tauri', 'web');
 const releaseRoot = resolve(root, 'release');
 const tauriCli = resolve(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 
-function run(command, args) {
+function run(command, args, environment = {}) {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: 'inherit', shell: false });
+    const child = spawn(command, args, {
+      cwd: root,
+      stdio: 'inherit',
+      shell: false,
+      env: { ...process.env, ...environment }
+    });
     child.once('error', reject);
     child.once('exit', (code) => {
       if (code === 0) resolveRun();
@@ -57,14 +62,19 @@ await writeFile(
 );
 
 await mkdir(dirname(archivePath), { recursive: true });
-await run('powershell.exe', [
-  '-NoProfile',
-  '-NonInteractive',
-  '-Command',
-  'Compress-Archive -Path $args[0] -DestinationPath $args[1] -Force',
-  resolve(outputDir, '*'),
-  archivePath
-]);
+await run(
+  'powershell.exe',
+  [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    'Compress-Archive -Path $env:ONYX_PORTABLE_SOURCE -DestinationPath $env:ONYX_PORTABLE_ARCHIVE -Force'
+  ],
+  {
+    ONYX_PORTABLE_SOURCE: resolve(outputDir, '*'),
+    ONYX_PORTABLE_ARCHIVE: archivePath
+  }
+);
 
 console.log(`\nPortable folder: ${outputDir}`);
 console.log(`Portable ZIP:    ${archivePath}`);

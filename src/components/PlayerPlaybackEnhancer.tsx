@@ -21,34 +21,28 @@ function activateSubtitle(video:HTMLVideoElement,label?:string){
    if(index>=0)option=Array.from(select.options).find(value=>value.value===String(index));
  }
  if(!option)return;
- select.value=option.value;
- select.dispatchEvent(new Event('change',{bubbles:true}));
- const index=Number.parseInt(option.value,10);
- window.setTimeout(()=>{for(let i=0;i<video.textTracks.length;i++)video.textTracks[i].mode=i===index?'showing':'disabled'},100);
+ select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));
+ const index=Number.parseInt(option.value,10);window.setTimeout(()=>{for(let i=0;i<video.textTracks.length;i++)video.textTracks[i].mode=i===index?'showing':'disabled'},120);
 }
 
 export function PlayerPlaybackEnhancer(){
  useEffect(()=>{
-   let current:HTMLVideoElement|null=null;let currentId='';let lastTime=0;let selectCleanup:(()=>void)|null=null;
-   const detach=()=>{if(selectCleanup){selectCleanup();selectCleanup=null}if(current&&currentId){const state=readState();writeState({mediaId:currentId,time:lastTime||current.currentTime||0,subtitleLabel:selectedSubtitleLabel()??state?.subtitleLabel,eligible:Boolean(document.querySelector('.sidebar-resume'))})}current=null;currentId='';lastTime=0};
+   let video:HTMLVideoElement|null=null;let id='';let lastTime=0;let cleanupCurrent:(()=>void)|null=null;
+   const save=(eligible?:boolean)=>{if(!video||!id)return;lastTime=video.currentTime||lastTime;const previous=readState();writeState({mediaId:id,time:lastTime,subtitleLabel:selectedSubtitleLabel()??previous?.subtitleLabel,eligible:eligible??previous?.eligible??false})};
+   const detach=()=>{if(!video)return;save(Boolean(document.querySelector('.sidebar-resume')));cleanupCurrent?.();cleanupCurrent=null;video=null;id='';lastTime=0};
    const attach=()=>{
-     const video=document.querySelector<HTMLVideoElement>('.player-content .video-stage video');
-     if(video===current)return;
-     if(current&&!current.isConnected)detach();
-     if(!video)return;
-     current=video;currentId=mediaId(video);lastTime=video.currentTime||0;
-     // Chromium requires CORS mode on the media element before it will render cross-origin WebVTT tracks.
-     if(!video.dataset.onyxTrackCors){video.dataset.onyxTrackCors='1';video.crossOrigin='anonymous';video.load();}
-     const remember=()=>{lastTime=video.currentTime||lastTime;const previous=readState();writeState({mediaId:currentId,time:lastTime,subtitleLabel:selectedSubtitleLabel()??previous?.subtitleLabel,eligible:previous?.eligible??false})};
-     const restore=()=>{const state=readState();if(state?.eligible&&state.mediaId===currentId&&state.time>1&&Math.abs(video.currentTime-state.time)>2)video.currentTime=state.time;window.setTimeout(()=>activateSubtitle(video,state?.eligible&&state.mediaId===currentId?state.subtitleLabel:undefined),120);if(state?.eligible&&state.mediaId===currentId)writeState({...state,eligible:false});};
-     video.addEventListener('timeupdate',remember);video.addEventListener('pause',remember);video.addEventListener('loadedmetadata',restore);
-     if(video.readyState>=1)restore();
-     const select=document.querySelector<HTMLSelectElement>('.player-toolbar .subtitle-control select');
-     if(select){const changed=()=>remember();select.addEventListener('change',changed);selectCleanup=()=>select.removeEventListener('change',changed)}
-     const cleanupVideo=()=>{video.removeEventListener('timeupdate',remember);video.removeEventListener('pause',remember);video.removeEventListener('loadedmetadata',restore)};
-     const oldDetach=detach;detach=()=>{cleanupVideo();oldDetach()};
+     const next=document.querySelector<HTMLVideoElement>('.player-content .video-stage video');
+     if(next===video)return;if(video&&!video.isConnected)detach();if(!next)return;
+     video=next;id=mediaId(next);lastTime=next.currentTime||0;
+     if(!next.dataset.onyxTrackCors){next.dataset.onyxTrackCors='1';next.crossOrigin='anonymous';next.load();}
+     const remember=()=>save();
+     const restore=()=>{const state=readState();const isResume=Boolean(state?.eligible&&state.mediaId===id);if(isResume&&state!.time>1&&Math.abs(next.currentTime-state!.time)>2)next.currentTime=state!.time;window.setTimeout(()=>activateSubtitle(next,isResume?state?.subtitleLabel:undefined),140);if(isResume&&state)writeState({...state,eligible:false});};
+     next.addEventListener('timeupdate',remember);next.addEventListener('pause',remember);next.addEventListener('loadedmetadata',restore);
+     const select=document.querySelector<HTMLSelectElement>('.player-toolbar .subtitle-control select');const changed=()=>save();select?.addEventListener('change',changed);
+     cleanupCurrent=()=>{next.removeEventListener('timeupdate',remember);next.removeEventListener('pause',remember);next.removeEventListener('loadedmetadata',restore);select?.removeEventListener('change',changed)};
+     if(next.readyState>=1)restore();
    };
-   attach();const observer=new MutationObserver(()=>{window.setTimeout(attach,0);if(current&&!current.isConnected)window.setTimeout(detach,50)});observer.observe(document.body,{childList:true,subtree:true});
+   attach();const observer=new MutationObserver(()=>{if(video&&!video.isConnected)window.setTimeout(detach,40);window.setTimeout(attach,0)});observer.observe(document.body,{childList:true,subtree:true});
    return()=>{observer.disconnect();detach()};
  },[]);
  return null;

@@ -46,41 +46,28 @@ async fn artwork(State(state): State<Shared>, AxumPath(channel_id): AxumPath<Str
         .unwrap()
 }
 
+fn find_item(state:&crate::AppState,media_id:&str)->Option<MediaItem>{state.media.read().ok().and_then(|items|items.iter().find(|item|item.id==media_id).cloned())}
+async fn ffmpeg_offset(item:MediaItem,offset:u64,preserve_timeline:bool,category:&str)->Response{
+    activity::info(category, format!("Opening {} at {} seconds", item.title, offset));
+    let offset_arg=offset.to_string();
+    let mut command=Command::new("ffmpeg");
+    command.kill_on_drop(true).args(["-hide_banner","-loglevel","error","-ss"]).arg(&offset_arg).arg("-i").arg(&item.path).args(["-map","0:v:0","-map","0:a:0?"]);
+    if item.playback_mode=="transcode"{command.args(["-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","192k"]);}else{command.args(["-c:v","copy","-c:a","copy"]);}
+    if preserve_timeline{command.args(["-output_ts_offset"]).arg(&offset_arg);}
+    command.args(["-movflags","frag_keyframe+empty_moov+default_base_moof","-f","mp4","pipe:1"]).stdout(Stdio::piped()).stderr(Stdio::null());
+    let Ok(mut child)=command.spawn() else{return(StatusCode::SERVICE_UNAVAILABLE,"FFmpeg is required for this playback mode.").into_response();};
+    let Some(stdout)=child.stdout.take() else{return StatusCode::INTERNAL_SERVER_ERROR.into_response();};tokio::spawn(async move{let _=child.wait().await;});
+    Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE,"video/mp4").header(header::CACHE_CONTROL,"no-store").body(Body::from_stream(ReaderStream::new(stdout))).unwrap()
+}
+
 async fn play(State(state): State<Shared>, AxumPath((media_id, offset)): AxumPath<(String, u64)>) -> Response {
-    let item = state.media.read().ok().and_then(|items| items.iter().find(|item| item.id == media_id).cloned());
-    let Some(item) = item else { return StatusCode::NOT_FOUND.into_response(); };
-    activity::info("Live TV", format!("Tuning {} at {} seconds", item.title, offset));
+    let Some(item)=find_item(&state,&media_id) else{return StatusCode::NOT_FOUND.into_response();};
+    ffmpeg_offset(item,offset,false,"Live TV").await
+}
 
-    let offset_arg = offset.to_string();
-    let mut command = Command::new("ffmpeg");
-    command
-        .kill_on_drop(true)
-        .args(["-hide_banner", "-loglevel", "error", "-ss"])
-        .arg(&offset_arg)
-        .arg("-i")
-        .arg(&item.path)
-        .args(["-map", "0:v:0", "-map", "0:a:0?"]);
-    if item.playback_mode == "transcode" {
-        command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k"]);
-    } else {
-        command.args(["-c:v", "copy", "-c:a", "copy"]);
-    }
-    command
-        .args(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-
-    let Ok(mut child) = command.spawn() else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required for Live Channels playback.").into_response();
-    };
-    let Some(stdout) = child.stdout.take() else { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); };
-    tokio::spawn(async move { let _ = child.wait().await; });
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "video/mp4")
-        .header(header::CACHE_CONTROL, "no-store")
-        .body(Body::from_stream(ReaderStream::new(stdout)))
-        .unwrap()
+async fn resume(State(state): State<Shared>, AxumPath((media_id, offset)): AxumPath<(String, u64)>) -> Response {
+    let Some(item)=find_item(&state,&media_id) else{return StatusCode::NOT_FOUND.into_response();};
+    ffmpeg_offset(item,offset,true,"Playback").await
 }
 
 pub fn router() -> Router<Shared> {
@@ -88,4 +75,5 @@ pub fn router() -> Router<Shared> {
         .route("/api/live-channels/guide", get(guide))
         .route("/api/live-channels/art/{channel_id}", get(artwork))
         .route("/api/live-channels/play/{media_id}/{offset}", get(play))
+        .route("/api/playback/resume/{media_id}/{offset}", get(resume))
 }

@@ -31,3 +31,12 @@ pub fn activity_entries() -> Vec<ActivityEntry> { store().read().map(|entries| e
 
 #[tauri::command]
 pub fn clear_activity() { if let Ok(mut entries) = store().write() { entries.clear(); } info("Activity", "Activity console cleared"); }
+
+#[tauri::command]
+pub fn record_client_activity(level: Option<String>, category: String, message: String) {
+    let category = category.trim().chars().take(48).collect::<String>();
+    let message = message.trim().chars().take(300).collect::<String>();
+    if category.is_empty() || message.is_empty() { return; }
+    let level = match level.as_deref() { Some("error") => "error", Some("warning") => "warning", _ => "info" };
+    push(level, &category, message);
+}

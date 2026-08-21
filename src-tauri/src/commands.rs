@@ -52,7 +52,7 @@ pub struct IdentityInput {
 }
 
 fn command_available(name: &str) -> bool {
-    std::process::Command::new(name)
+    crate::child_process::command(name)
         .arg("-version")
         .output()
         .map(|output| output.status.success())

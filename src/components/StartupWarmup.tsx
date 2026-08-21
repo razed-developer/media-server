@@ -23,6 +23,7 @@ export function StartupWarmup(){
     setMessage('Loading movies and television…');
     const[media,playlists,channels]=await Promise.all([listMedia(),listPlaylists(),listLiveChannels()]);
     if(disposed)return;
+    try{sessionStorage.setItem(`onyx-media-cache:${getActiveUserId()}`,JSON.stringify(media))}catch{/* cache is optional */}
     const shows=[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b));
     const genres=[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b));
     sessionStorage.setItem(`onyx-live-criteria:${getActiveUserId()}`,JSON.stringify({shows,genres,playlists,createdAt:Date.now()}));

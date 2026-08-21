@@ -4,6 +4,7 @@ mod artwork;
 mod assets;
 mod commands;
 mod database;
+mod household_feed;
 mod ibroadcast;
 mod ibroadcast_oauth;
 mod library;
@@ -72,6 +73,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_external_url,
             activity::activity_entries, activity::clear_activity, activity::record_client_activity, assets::save_ibroadcast_logo,
+            household_feed::household_feed,
             commands::setup_status, commands::complete_setup, commands::set_ibroadcast_client_id,
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::add_movie_path, commands::add_tv_path, commands::remove_movie_path, commands::remove_tv_path,

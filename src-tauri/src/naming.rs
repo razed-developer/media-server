@@ -23,6 +23,29 @@ fn year(raw: &str) -> Option<u16> {
         .ok()
 }
 
+fn looks_like_release_token(value: &str) -> bool {
+    let v = value.trim_matches(['-', '.', '_']).to_ascii_lowercase();
+    if v.is_empty() { return false; }
+    if Regex::new(r"^(?:480|576|720|1080|1440|2160|4320)p$").ok().is_some_and(|re| re.is_match(&v)) { return true; }
+    if Regex::new(r"^(?:x|h)[.-]?26[45]$|^hevc$|^av1$|^xvid$").ok().is_some_and(|re| re.is_match(&v)) { return true; }
+    matches!(v.as_str(), "hdtv"|"web"|"webdl"|"web-dl"|"webrip"|"bluray"|"bdrip"|"dvdrip"|"remux"|"proper"|"repack"|"aac"|"ac3"|"eac3"|"ddp"|"dts"|"atmos"|"hdr"|"hdr10"|"dv")
+}
+
+fn clean_episode_tail(raw: &str, episode: u16) -> String {
+    let tail = clean(raw);
+    if tail.is_empty() { return format!("Episode {episode}"); }
+    let mut words = tail.split_whitespace().collect::<Vec<_>>();
+    if words.first().is_some_and(|token| looks_like_release_token(token)) {
+        return format!("Episode {episode}");
+    }
+    // Keep a human title but stop before the common technical release suffix.
+    if let Some(index) = words.iter().position(|token| looks_like_release_token(token)) {
+        words.truncate(index);
+    }
+    let title = words.join(" ").trim_matches(['-', ' ']).trim().to_string();
+    if title.is_empty() { format!("Episode {episode}") } else { title }
+}
+
 pub fn parse_movie(path: &Path) -> ParsedName {
     let raw = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled");
     let detected_year = year(raw);
@@ -48,21 +71,43 @@ pub fn parse_movie(path: &Path) -> ParsedName {
 fn parse_episode_filename(path: &Path) -> Option<ParsedName> {
     let raw = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled");
     let patterns = [
-        // Supports S01E05, S01E05E06, S01E05-E06 and S01E05-06.
-        r"(?i)^(.*?)[ ._-]+S(\d{1,2})E(\d{1,3})(?:[ ._-]?E?(\d{1,3}))?[ ._-]*(.*)$",
-        r"(?i)^(.*?)[ ._-]+(\d{1,2})x(\d{1,3})(?:-(\d{1,3}))?[ ._-]*(.*)$",
+        r"(?i)^(.*?)[ ._-]+S(\d{1,2})E(\d{1,3})(.*)$",
+        r"(?i)^(.*?)[ ._-]+(\d{1,2})x(\d{1,3})(.*)$",
     ];
 
-    for pattern in patterns {
+    for (pattern_index, pattern) in patterns.iter().enumerate() {
         if let Ok(re) = Regex::new(pattern) {
             if let Some(c) = re.captures(raw) {
                 let show = clean(c.get(1).map(|m| m.as_str()).unwrap_or("Show"));
-                let season = c.get(2).and_then(|m| m.as_str().parse().ok());
-                let episode = c.get(3).and_then(|m| m.as_str().parse().ok());
-                let episode_end = c.get(4).and_then(|m| m.as_str().parse().ok());
-                let tail = clean(c.get(5).map(|m| m.as_str()).unwrap_or(""));
+                let season = c.get(2).and_then(|m| m.as_str().parse::<u16>().ok());
+                let episode = c.get(3).and_then(|m| m.as_str().parse::<u16>().ok());
+                let episode_no = episode.unwrap_or(0);
+                let remainder = c.get(4).map(|m| m.as_str()).unwrap_or("");
+
+                // Parse a genuine multi-episode marker without mistaking `-720p` or
+                // `-1080p` for an episode range. S01E05E06 and S01E05-E06 remain valid.
+                let multi_pattern = if pattern_index == 0 {
+                    r"(?i)^[ ._-]*(?:E(\d{1,3})|[-_ ]E(\d{1,3}))(.*)$"
+                } else {
+                    r"(?i)^[ ._-]*-(\d{1,3})(.*)$"
+                };
+                let mut episode_end = None;
+                let mut tail = remainder;
+                if let Ok(multi) = Regex::new(multi_pattern) {
+                    if let Some(mc) = multi.captures(remainder) {
+                        let candidate = mc.get(1).or_else(|| mc.get(2)).and_then(|m| m.as_str().parse::<u16>().ok());
+                        let rest = if pattern_index == 0 { mc.get(3) } else { mc.get(2) }.map(|m| m.as_str()).unwrap_or("");
+                        let immediately_resolution = candidate.is_some_and(|n| matches!(n, 480|576|720|1080|1440|2160|4320))
+                            && rest.trim_start_matches(['.', '_', '-', ' ']).to_ascii_lowercase().starts_with('p');
+                        if !immediately_resolution {
+                            episode_end = candidate;
+                            tail = rest;
+                        }
+                    }
+                }
+
                 return Some(ParsedName {
-                    title: if tail.is_empty() { format!("Episode {}", episode.unwrap_or(0)) } else { tail },
+                    title: clean_episode_tail(tail, episode_no),
                     year: None,
                     show_title: Some(show),
                     season,
@@ -129,7 +174,7 @@ pub fn parse_tv(path: &Path) -> ParsedName {
     let title = leading_episode
         .as_ref()
         .and_then(|c| c.get(2))
-        .map(|m| clean(m.as_str()))
+        .map(|m| clean_episode_tail(m.as_str(), episode.unwrap_or(0)))
         .unwrap_or_else(|| clean(raw));
 
     ParsedName {
@@ -176,6 +221,21 @@ mod tests {
         assert_eq!(parsed.episode, Some(5));
         assert_eq!(parsed.episode_end, Some(6));
         assert_eq!(parsed.title, "Double Feature");
+    }
+
+    #[test]
+    fn does_not_treat_720p_as_episode_720() {
+        let parsed = parse(Path::new("Abbott.Elementary.S01E07-720p-HDTV-x265-MiNX.mkv"));
+        assert_eq!(parsed.show_title.as_deref(), Some("Abbott Elementary"));
+        assert_eq!(parsed.episode, Some(7));
+        assert_eq!(parsed.episode_end, None);
+        assert_eq!(parsed.title, "Episode 7");
+    }
+
+    #[test]
+    fn strips_release_suffix_after_episode_title() {
+        let parsed = parse(Path::new("Abbott.Elementary.S01E07.Art.Teacher.1080p.WEB-DL.x265.mkv"));
+        assert_eq!(parsed.title, "Art Teacher");
     }
 
     #[test]

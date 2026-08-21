@@ -26,7 +26,7 @@ export function PlayerEpisodeSocial(){
    else {
     const title=header?.querySelector('h1')?.textContent?.trim()||'Episode';
     const showTitle=header?.querySelector('.eyebrow')?.textContent?.trim()||'TV';
-    setItem(id?({id,title,showTitle,kind:'episode',path:'',streamUrl:src,subtitles:[],progressSeconds:0,genres:[]} as MediaItem):null);
+    setItem(id?{id,title,showTitle,kind:'episode',path:'',streamUrl:src,subtitles:[],progressSeconds:0,genres:[],playbackMode:'directPlay'}:null);
    }
   };
   resolve();const timer=window.setInterval(resolve,250);

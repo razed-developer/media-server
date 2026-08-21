@@ -76,4 +76,5 @@ pub fn router() -> Router<Shared> {
         .route("/api/live-channels/art/{channel_id}", get(artwork))
         .route("/api/live-channels/play/{media_id}/{offset}", get(play))
         .route("/api/playback/resume/{media_id}/{offset}", get(resume))
+        .merge(crate::user_features_server::router())
 }

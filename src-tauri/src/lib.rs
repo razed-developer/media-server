@@ -3,6 +3,7 @@ mod app_state;
 mod artwork;
 mod assets;
 mod commands;
+mod child_process;
 mod database;
 mod household_feed;
 mod ibroadcast;

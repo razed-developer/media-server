@@ -21,7 +21,7 @@ mod subtitles;
 mod user_features;
 mod user_features_server;
 
-use app_state::{app_data_dir, load_settings, AppState};
+use app_state::{app_data_dir, load_settings, AppState, ScanProgress};
 use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}};
 use tauri::{path::BaseDirectory, Manager};
 
@@ -59,6 +59,7 @@ pub fn run() {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
         settings: Arc::new(RwLock::new(load_settings(&settings_path))),
         media: Arc::new(RwLock::new(initial_media)), sessions: Arc::new(RwLock::new(HashMap::new())),
+        scan_progress: Arc::new(RwLock::new(ScanProgress::default())),
     });
 
     tauri::Builder::default()

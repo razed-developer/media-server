@@ -1,5 +1,5 @@
 use crate::{
-    app_state::persist_settings, artwork, database, ibroadcast, library, metadata, metadata_view,
+    app_state::{persist_settings, ScanProgress}, artwork, database, ibroadcast, library, metadata, metadata_view,
     models::{EnrichedAnalyticsSummary, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, UserPreferences, UserProfile},
     Shared, PORT,
 };
@@ -26,6 +26,7 @@ pub struct ServerStatus {
     artwork_cache_bytes: u64,
     setup_complete: bool,
     ibroadcast_client_id: Option<String>,
+    scan_progress: ScanProgress,
 }
 
 #[derive(Serialize)]
@@ -104,32 +105,73 @@ fn show_root(item: &MediaItem) -> PathBuf {
 
 fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
     crate::activity::info("Library", "Scanning configured media libraries");
-    let (legacy_path, movie_paths, tv_paths) = {
-        let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
-        (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths())
-    };
-    let mut media = Vec::new();
-    if movie_paths.is_empty() && tv_paths.is_empty() {
-        if let Some(root) = legacy_path { media.extend(library::scan(&PathBuf::from(root), &state.database_path, None)?); }
-    } else {
-        for root in movie_paths { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("movie"))?); }
-        for root in tv_paths { media.extend(library::scan(&PathBuf::from(root), &state.database_path, Some("episode"))?); }
+    let started_at = chrono::Utc::now().timestamp();
+    if let Ok(mut progress) = state.scan_progress.write() {
+        *progress = ScanProgress { active: true, phase: "starting".into(), started_at, ..ScanProgress::default() };
     }
-    // Guard against overlapping roots accidentally discovering the same file twice.
-    let mut seen = HashSet::new();
-    media.retain(|item| seen.insert(item.id.clone()));
-    media.sort_by(|a, b| {
-        let kind_order = a.kind.cmp(&b.kind);
-        if kind_order != std::cmp::Ordering::Equal { return kind_order; }
-        let a_key = (a.show_title.as_deref().unwrap_or(&a.title).to_lowercase(), a.season.unwrap_or(0), a.episode.unwrap_or(0), a.title.to_lowercase());
-        let b_key = (b.show_title.as_deref().unwrap_or(&b.title).to_lowercase(), b.season.unwrap_or(0), b.episode.unwrap_or(0), b.title.to_lowercase());
-        a_key.cmp(&b_key)
-    });
-    database::replace_library(&state.database_path, &media)?;
-    metadata::reconcile_local_entities(&state.database_path, &media)?;
-    *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone();
-    crate::activity::info("Library", format!("Library scan complete: {} media files", media.len()));
-    Ok(media)
+
+    let result = (|| {
+        let (legacy_path, movie_paths, tv_paths) = {
+            let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
+            (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths())
+        };
+        let mut roots: Vec<(PathBuf, Option<&str>)> = Vec::new();
+        if movie_paths.is_empty() && tv_paths.is_empty() {
+            if let Some(root) = legacy_path { roots.push((PathBuf::from(root), None)); }
+        } else {
+            roots.extend(movie_paths.into_iter().map(|root| (PathBuf::from(root), Some("movie"))));
+            roots.extend(tv_paths.into_iter().map(|root| (PathBuf::from(root), Some("episode"))));
+        }
+
+        let mut media = Vec::new();
+        let mut discovered_before = 0usize;
+        let mut inspected_before = 0usize;
+        for (root, hint) in roots {
+            let mut root_discovered = 0usize;
+            let mut root_inspected = 0usize;
+            let mut report = |phase: &str, discovered: usize, inspected: usize, path: Option<&Path>| {
+                root_discovered = discovered;
+                root_inspected = inspected;
+                if let Ok(mut progress) = state.scan_progress.write() {
+                    progress.phase = phase.into();
+                    progress.discovered = discovered_before + discovered;
+                    progress.inspected = inspected_before + inspected;
+                    progress.current_path = path.map(|value| value.to_string_lossy().to_string());
+                }
+            };
+            media.extend(library::scan(&root, &state.database_path, hint, &mut report)?);
+            discovered_before += root_discovered;
+            inspected_before += root_inspected;
+        }
+
+        let mut seen = HashSet::new();
+        media.retain(|item| seen.insert(item.id.clone()));
+        media.sort_by(|a, b| {
+            let kind_order = a.kind.cmp(&b.kind);
+            if kind_order != std::cmp::Ordering::Equal { return kind_order; }
+            let a_key = (a.show_title.as_deref().unwrap_or(&a.title).to_lowercase(), a.season.unwrap_or(0), a.episode.unwrap_or(0), a.title.to_lowercase());
+            let b_key = (b.show_title.as_deref().unwrap_or(&b.title).to_lowercase(), b.season.unwrap_or(0), b.episode.unwrap_or(0), b.title.to_lowercase());
+            a_key.cmp(&b_key)
+        });
+        if let Ok(mut progress) = state.scan_progress.write() { progress.phase = "saving".into(); }
+        database::replace_library(&state.database_path, &media)?;
+        metadata::reconcile_local_entities(&state.database_path, &media)?;
+        *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone();
+        crate::activity::info("Library", format!("Library scan complete: {} media files", media.len()));
+        Ok(media)
+    })();
+
+    let finished_at = chrono::Utc::now().timestamp();
+    if let Ok(mut progress) = state.scan_progress.write() {
+        progress.active = false;
+        progress.finished_at = Some(finished_at);
+        progress.current_path = None;
+        match &result {
+            Ok(media) => { progress.phase = "complete".into(); progress.discovered = media.len().max(progress.discovered); progress.inspected = progress.discovered; progress.error = None; }
+            Err(error) => { progress.phase = "failed".into(); progress.error = Some(error.clone()); }
+        }
+    }
+    result
 }
 
 fn update_root(state: &crate::app_state::AppState, kind: &str, path: String, add: bool) -> Result<(), String> {
@@ -173,6 +215,7 @@ pub fn setup_status(state: TauriState<'_, Shared>) -> Result<SetupStatus, String
         movie_paths,
         tv_paths,
         ibroadcast_client_id: settings.ibroadcast_client_id.clone(),
+        scan_progress: state.scan_progress.read().map_err(|_| "Scan progress lock poisoned")?.clone(),
         users: database::list_users(&state.database_path)?,
     })
 }

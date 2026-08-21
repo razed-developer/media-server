@@ -3,8 +3,11 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { BrandingEnhancer } from './components/BrandingEnhancer';
 import { FullscreenGuard } from './components/FullscreenGuard';
+import { GlobalMediaSearch } from './components/GlobalMediaSearch';
+import { HouseholdActivityFeed } from './components/HouseholdActivityFeed';
 import { LibraryJumpBridge } from './components/LibraryJumpBridge';
 import { OnyxDialogProvider } from './components/OnyxDialogProvider';
+import { OnyxVideoControls } from './components/OnyxVideoControls';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
 import { PlayerEpisodeSocial } from './components/PlayerEpisodeSocial';
 import { PlayerPlaybackEnhancer } from './components/PlayerPlaybackEnhancer';
@@ -29,6 +32,7 @@ import './subtitleFinder.css';
 import './playbackContinuity.css';
 import './startupWarmup.css';
 import './continuityPolish.css';
+import './socialDiscovery.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -39,8 +43,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <LibraryJumpBridge />
       <FullscreenGuard />
       <PlayerPlaybackEnhancer />
+      <OnyxVideoControls />
       <PlayerSubtitleSearch />
       <PlayerEpisodeSocial />
+      <GlobalMediaSearch />
+      <HouseholdActivityFeed />
       <PerformanceMonitor />
     </OnyxDialogProvider>
   </React.StrictMode>,

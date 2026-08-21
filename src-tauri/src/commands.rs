@@ -191,20 +191,35 @@ pub fn set_ibroadcast_client_id(client_id: String, state: TauriState<'_, Shared>
 }
 
 #[tauri::command]
-pub fn set_library_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> {
-    validate_folder(&path)?;
-    state.settings.write().map_err(|_| "Settings lock poisoned")?.library_path = Some(path);
-    persist_settings(&state)?;
-    scan(&state)?;
-    Ok(())
+pub async fn set_library_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        validate_folder(&path)?;
+        shared.settings.write().map_err(|_| "Settings lock poisoned")?.library_path = Some(path);
+        persist_settings(&shared)?;
+        scan(&shared)?;
+        Ok(())
+    }).await.map_err(|error| format!("Library worker failed: {error}"))?
 }
 
-#[tauri::command] pub fn set_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "movie", path, false) }
-#[tauri::command] pub fn set_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "tv", path, false) }
-#[tauri::command] pub fn add_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "movie", path, true) }
-#[tauri::command] pub fn add_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root(&state, "tv", path, true) }
-#[tauri::command] pub fn remove_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root(&state, "movie", &path) }
-#[tauri::command] pub fn remove_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root(&state, "tv", &path) }
+async fn update_root_async(state: TauriState<'_, Shared>, kind: &'static str, path: String, add: bool) -> Result<(), String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || update_root(&shared, kind, path, add))
+        .await.map_err(|error| format!("Library worker failed: {error}"))?
+}
+
+async fn remove_root_async(state: TauriState<'_, Shared>, kind: &'static str, path: String) -> Result<(), String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || remove_root(&shared, kind, &path))
+        .await.map_err(|error| format!("Library worker failed: {error}"))?
+}
+
+#[tauri::command] pub async fn set_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "movie", path, false).await }
+#[tauri::command] pub async fn set_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "tv", path, false).await }
+#[tauri::command] pub async fn add_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "movie", path, true).await }
+#[tauri::command] pub async fn add_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "tv", path, true).await }
+#[tauri::command] pub async fn remove_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "movie", path).await }
+#[tauri::command] pub async fn remove_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "tv", path).await }
 
 #[tauri::command]
 pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> Result<(), String> {
@@ -223,7 +238,11 @@ pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn scan_library(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> { scan(&state) }
+pub async fn scan_library(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || scan(&shared))
+        .await.map_err(|error| format!("Library worker failed: {error}"))?
+}
 #[tauri::command] pub fn list_users(state: TauriState<'_, Shared>) -> Result<Vec<UserProfile>, String> { database::list_users(&state.database_path) }
 #[tauri::command] pub fn create_user(name: String, state: TauriState<'_, Shared>) -> Result<Vec<UserProfile>, String> { database::create_user(&state.database_path, &name)?; database::list_users(&state.database_path) }
 #[tauri::command] pub fn rename_user(user_id: String, name: String, state: TauriState<'_, Shared>) -> Result<Vec<UserProfile>, String> { database::rename_user(&state.database_path, &user_id, &name)?; database::list_users(&state.database_path) }

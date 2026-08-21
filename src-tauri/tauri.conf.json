@@ -17,7 +17,8 @@
         "height": 900,
         "minWidth": 900,
         "minHeight": 640,
-        "decorations": false
+        "decorations": false,
+        "icon": "../logos/app-icon.png"
       }
     ],
     "security": {
@@ -27,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [],
+    "icon": ["../logos/app-icon.png"],
     "resources": {
       "web/": "web/"
     }

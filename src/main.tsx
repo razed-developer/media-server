@@ -5,6 +5,7 @@ import { BrandingEnhancer } from './components/BrandingEnhancer';
 import { FullscreenGuard } from './components/FullscreenGuard';
 import { LibraryJumpBridge } from './components/LibraryJumpBridge';
 import { OnyxDialogProvider } from './components/OnyxDialogProvider';
+import { PerformanceMonitor } from './components/PerformanceMonitor';
 import { PlayerEpisodeSocial } from './components/PlayerEpisodeSocial';
 import { PlayerPlaybackEnhancer } from './components/PlayerPlaybackEnhancer';
 import { PlayerSubtitleSearch } from './components/PlayerSubtitleSearch';
@@ -41,6 +42,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <PlayerPlaybackEnhancer />
       <PlayerSubtitleSearch />
       <PlayerEpisodeSocial />
+      <PerformanceMonitor />
     </OnyxDialogProvider>
   </React.StrictMode>,
 );

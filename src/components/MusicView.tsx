@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Disc3, ListMusic, Music2, RefreshCw, Search, UserRound, X } from 'lucide-react';
-import { fetchIbroadcastAudioBlob, getActiveUserId, getIbroadcastLibrary, getIbroadcastStatus, ibroadcastStreamUrl, syncIbroadcast } from '../api';
-import type { IbAlbum, IbArtist, IbConnectionStatus, IbLibrary, IbPlaylist, IbTrack } from '../types';
+import { fetchIbroadcastAudioBlob, getActiveUserId, ibroadcastStreamUrl } from '../api';
+import type { IbAlbum, IbArtist, IbLibrary, IbPlaylist, IbTrack } from '../types';
+import { getPreloadedMusicLibrary, preloadMusicLibrary, updatePreloadedMusicLibrary } from '../musicLibraryCache';
 import { IbroadcastConnect } from './IbroadcastConnect';
 import '../musicEnhancements.css';
 
@@ -13,8 +14,9 @@ const duration=(seconds:number)=>`${Math.floor(seconds/60)}:${String(seconds%60)
 const coverKey=(kind:'artist'|'playlist',id:string)=>`onyx-music-cover:${getActiveUserId()}:${kind}:${id}`;
 
 export function MusicView(){
- const[status,setStatus]=useState<IbConnectionStatus|null>(null);
- const[library,setLibrary]=useState<IbLibrary>(empty);
+ const initial=getPreloadedMusicLibrary();
+ const[status,setStatus]=useState(initial?.status??null);
+ const[library,setLibrary]=useState<IbLibrary>(initial?.library??empty);
  const[mode,setMode]=useState<MusicMode>('artists');
  const[query,setQuery]=useState('');
  const[selectedArtist,setSelectedArtist]=useState<IbArtist|null>(null);
@@ -32,7 +34,7 @@ export function MusicView(){
  const fallbackUrlRef=useRef<string|null>(null);
 
  const revokeFallback=()=>{if(fallbackUrlRef.current){URL.revokeObjectURL(fallbackUrlRef.current);fallbackUrlRef.current=null}setAudioFallbackUrl(null)};
- const load=async(force=false)=>{setBusy(true);setError(null);try{const nextStatus=await getIbroadcastStatus();setStatus(nextStatus);if(nextStatus.connected){const next=force?await syncIbroadcast():await getIbroadcastLibrary();setLibrary(next.tracks.length||!force?next:await syncIbroadcast());}else setLibrary(empty);}catch(cause){setError(String(cause))}finally{setBusy(false)}};
+ const load=async(force=false)=>{setBusy(true);setError(null);try{const snapshot=await preloadMusicLibrary(getActiveUserId(),force);setStatus(snapshot.status);setLibrary(snapshot.library);updatePreloadedMusicLibrary(snapshot);}catch(cause){setError(String(cause))}finally{setBusy(false)}};
  useEffect(()=>{void load();return()=>{if(fallbackUrlRef.current)URL.revokeObjectURL(fallbackUrlRef.current)}},[]);
  useEffect(()=>{if(!nowPlaying)return;const timer=window.setTimeout(()=>audio.current?.play().catch(()=>{}),0);return()=>window.clearTimeout(timer)},[nowPlaying,audioFallbackUrl]);
  useEffect(()=>{if(!coverMenu)return;const close=()=>setCoverMenu(null);window.addEventListener('click',close);window.addEventListener('blur',close);return()=>{window.removeEventListener('click',close);window.removeEventListener('blur',close)}},[coverMenu]);

@@ -43,12 +43,12 @@ fn local_image(item: &MediaItem, kind: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
-fn ffmpeg_available() -> bool { Command::new("ffmpeg").arg("-version").output().map(|output| output.status.success()).unwrap_or(false) }
+fn ffmpeg_available() -> bool { crate::child_process::command("ffmpeg").arg("-version").output().map(|output| output.status.success()).unwrap_or(false) }
 
 fn normalize(source: &Path, destination: &Path, width: u32, height: u32) -> bool {
     if !ffmpeg_available() { return false; }
     if let Some(parent) = destination.parent() { let _ = fs::create_dir_all(parent); }
-    Command::new("ffmpeg").args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(source)
+    crate::child_process::command("ffmpeg").args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(source)
         .args(["-vf", &format!("scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"), "-frames:v", "1", "-c:v", "libwebp", "-quality", "76"])
         .arg(destination).status().map(|status| status.success()).unwrap_or(false)
 }
@@ -60,7 +60,7 @@ fn seek_seconds(item: &MediaItem) -> f64 {
 fn generate_frame(item: &MediaItem, destination: &Path, width: u32, height: u32, quality: u8) -> bool {
     if !ffmpeg_available() { return false; }
     if let Some(parent) = destination.parent() { let _ = fs::create_dir_all(parent); }
-    Command::new("ffmpeg")
+    crate::child_process::command("ffmpeg")
         .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", &format!("{:.1}", seek_seconds(item)), "-i"])
         .arg(&item.path)
         .args(["-vf", &format!("scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"), "-frames:v", "1", "-c:v", "libwebp", "-quality", &quality.to_string()])

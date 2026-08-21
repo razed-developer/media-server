@@ -32,6 +32,19 @@ impl Settings {
     }
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    pub active: bool,
+    pub phase: String,
+    pub discovered: usize,
+    pub inspected: usize,
+    pub current_path: Option<String>,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+    pub error: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub settings_path: PathBuf,
@@ -41,6 +54,7 @@ pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
     pub media: Arc<RwLock<Vec<MediaItem>>>,
     pub sessions: Arc<RwLock<HashMap<String, u64>>>,
+    pub scan_progress: Arc<RwLock<ScanProgress>>,
 }
 
 pub type Shared = Arc<AppState>;

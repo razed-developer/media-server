@@ -16,7 +16,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{io::SeekFrom, net::SocketAddr, path::{Path, PathBuf}, process::Stdio, time::{SystemTime, UNIX_EPOCH}};
-use tokio::{fs::File, io::{AsyncReadExt, AsyncSeekExt}, process::Command};
+use tokio::{fs::File, io::{AsyncReadExt, AsyncSeekExt}};
 use tokio_util::io::ReaderStream;
 use tower_http::{cors::{AllowOrigin, CorsLayer}, services::{ServeDir, ServeFile}};
 use uuid::Uuid;
@@ -104,7 +104,7 @@ async fn api_analytics(State(state): State<Shared>, headers: HeaderMap) -> Resul
     let genres = metadata::genre_watch_totals(&state.database_path, &user).unwrap_or_default();
     Ok(Json(EnrichedAnalyticsSummary::from_core(core, genres)))
 }
-fn command_available(name: &str) -> bool { std::process::Command::new(name).arg("-version").output().map(|o| o.status.success()).unwrap_or(false) }
+fn command_available(name: &str) -> bool { crate::child_process::command(name).arg("-version").output().map(|o| o.status.success()).unwrap_or(false) }
 async fn api_status(State(state): State<Shared>) -> Json<BrowserStatus> {
     Json(BrowserStatus { running: true, item_count: state.media.read().map(|m| m.len()).unwrap_or(0), ffprobe_available: command_available("ffprobe"), ffmpeg_available: command_available("ffmpeg"), artwork_cache_bytes: artwork::cache_size(&state.artwork_path) })
 }
@@ -181,7 +181,7 @@ async fn direct_stream(item: &MediaItem, headers: &HeaderMap) -> Response {
     let mut builder = Response::builder().status(status).header(header::CONTENT_TYPE, mime).header(header::CONTENT_LENGTH, length.to_string()).header(header::ACCEPT_RANGES, "bytes"); if status == StatusCode::PARTIAL_CONTENT { builder = builder.header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}")); } builder.body(body).unwrap()
 }
 async fn ffmpeg_playback(item: &MediaItem, transcode: bool) -> Response {
-    let mut command = Command::new("ffmpeg"); command.kill_on_drop(true).args(["-hide_banner", "-loglevel", "error", "-i"]).arg(&item.path).args(["-map", "0:v:0", "-map", "0:a:0?"]);
+    let mut command = crate::child_process::async_command("ffmpeg"); command.kill_on_drop(true).args(["-hide_banner", "-loglevel", "error", "-i"]).arg(&item.path).args(["-map", "0:v:0", "-map", "0:a:0?"]);
     if transcode { command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k"]); } else { command.args(["-c:v", "copy", "-c:a", "copy"]); }
     command.args(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]).stdout(Stdio::piped()).stderr(Stdio::null());
     let Ok(mut child) = command.spawn() else { return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required for this file but was not found or could not be started.").into_response(); }; let Some(stdout) = child.stdout.take() else { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); }; tokio::spawn(async move { let _ = child.wait().await; });
@@ -199,7 +199,7 @@ pub async fn subtitle(State(state): State<Shared>, AxumPath((id, filename)): Axu
 }
 pub async fn embedded_subtitle(State(state): State<Shared>, AxumPath((id, stream_index)): AxumPath<(String, u32)>) -> Response {
     let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); }; if !item.subtitles.iter().any(|track| track.embedded && track.stream_index == Some(stream_index)) { return StatusCode::NOT_FOUND.into_response(); }
-    let output = Command::new("ffmpeg").args(["-hide_banner", "-loglevel", "error", "-i"]).arg(&item.path).arg("-map").arg(format!("0:{stream_index}")).args(["-f", "webvtt", "pipe:1"]).output().await; let Ok(output) = output else { return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required to extract embedded subtitles.").into_response(); }; if !output.status.success() { return StatusCode::UNPROCESSABLE_ENTITY.into_response(); } Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE, "text/vtt; charset=utf-8").header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(output.stdout)).unwrap()
+    let output = crate::child_process::async_command("ffmpeg").args(["-hide_banner", "-loglevel", "error", "-i"]).arg(&item.path).arg("-map").arg(format!("0:{stream_index}")).args(["-f", "webvtt", "pipe:1"]).output().await; let Ok(output) = output else { return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required to extract embedded subtitles.").into_response(); }; if !output.status.success() { return StatusCode::UNPROCESSABLE_ENTITY.into_response(); } Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE, "text/vtt; charset=utf-8").header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(output.stdout)).unwrap()
 }
 async fn dev_browser_redirect() -> Html<&'static str> { Html(r#"<!doctype html><meta charset=\"utf-8\"><title>Onyx</title><script>location.replace('http://'+location.hostname+':1420'+location.pathname+location.search+location.hash)</script><p>Opening Onyx…</p>"#) }
 

@@ -18,6 +18,7 @@ mod probe;
 mod server;
 mod subtitles;
 mod user_features;
+mod user_features_server;
 
 use app_state::{app_data_dir, load_settings, AppState};
 use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}};

@@ -1,5 +1,5 @@
 use crate::models::MediaItem;
-use std::{fs, path::{Path, PathBuf}, process::Command};
+use std::{fs, path::{Path, PathBuf}};
 
 const IMAGE_EXTENSIONS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
 

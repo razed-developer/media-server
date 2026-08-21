@@ -32,7 +32,7 @@ const archivePath = resolve(releaseRoot, `${artifactName}.zip`);
 const executableSource = resolve(cargoRelease, 'media-server.exe');
 const executableTarget = resolve(outputDir, 'Onyx.exe');
 
-await run(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['tauri', 'build', '--no-bundle']);
+await run('npx.cmd', ['tauri', 'build', '--no-bundle']);
 
 await rm(outputDir, { recursive: true, force: true });
 await rm(archivePath, { force: true });
@@ -60,7 +60,7 @@ await run('powershell.exe', [
   '-NoProfile',
   '-NonInteractive',
   '-Command',
-  'Compress-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force',
+  'Compress-Archive -Path $args[0] -DestinationPath $args[1] -Force',
   resolve(outputDir, '*'),
   archivePath
 ]);

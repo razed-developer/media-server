@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::{path::Path, process::Command};
 
 pub fn inspect(path: &Path) -> ProbeResult {
-    let output = Command::new("ffprobe")
+    let output = crate::child_process::command("ffprobe")
         .args([
             "-v",
             "quiet",

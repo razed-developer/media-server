@@ -31,15 +31,25 @@ fn looks_like_release_token(value: &str) -> bool {
     matches!(v.as_str(), "hdtv"|"web"|"webdl"|"web-dl"|"webrip"|"bluray"|"bdrip"|"dvdrip"|"remux"|"proper"|"repack"|"aac"|"ac3"|"eac3"|"ddp"|"dts"|"atmos"|"hdr"|"hdr10"|"dv")
 }
 
+fn starts_with_release_metadata(value: &str) -> bool {
+    let v = value.trim_matches(['-', '.', '_', ' ']).to_ascii_lowercase();
+    Regex::new(r"^(?:480|576|720|1080|1440|2160|4320)p(?:$|[-._ ])")
+        .ok()
+        .is_some_and(|re| re.is_match(&v))
+        || Regex::new(r"^(?:hdtv|web(?:-?dl)?|webrip|bluray|bdrip|dvdrip|remux)(?:$|[-._ ])")
+            .ok()
+            .is_some_and(|re| re.is_match(&v))
+}
+
 fn clean_episode_tail(raw: &str, episode: u16) -> String {
     let tail = clean(raw);
-    if tail.is_empty() { return format!("Episode {episode}"); }
+    if tail.is_empty() || starts_with_release_metadata(&tail) { return format!("Episode {episode}"); }
     let mut words = tail.split_whitespace().collect::<Vec<_>>();
     if words.first().is_some_and(|token| looks_like_release_token(token)) {
         return format!("Episode {episode}");
     }
     // Keep a human title but stop before the common technical release suffix.
-    if let Some(index) = words.iter().position(|token| looks_like_release_token(token)) {
+    if let Some(index) = words.iter().position(|token| looks_like_release_token(token) || starts_with_release_metadata(token)) {
         words.truncate(index);
     }
     let title = words.join(" ").trim_matches(['-', ' ']).trim().to_string();

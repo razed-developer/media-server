@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AnalyticsSummary, AuthStatus, GuideChannel, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, LiveChannel, LiveChannelInput, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, ServerStatus, SetupStatus, ThemeName, UserPreferences, UserProfile } from './types';
+import type { AnalyticsSummary, AuthStatus, GuideChannel, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, LiveChannel, LiveChannelInput, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, ServerStatus, SetupStatus, ScanProgress, ThemeName, UserPreferences, UserProfile } from './types';
 export interface IdentityInput { title?:string; year?:number; kind?:'movie'|'episode'; showTitle?:string; season?:number; episode?:number; }
 export const isTauriDesktop=()=>Boolean((window as Window&{__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__);
 export const serverBaseUrl=()=>isTauriDesktop()?'http://127.0.0.1:8765':'';
@@ -41,6 +41,7 @@ export async function setLiveChannelArtwork(channelId:string,path:string):Promis
 export async function getLiveChannelGuide():Promise<GuideChannel[]>{if(isTauriDesktop())return invoke<GuideChannel[]>('live_channels_guide',{userId:activeUserId});return json(await browserFetch(`${serverBaseUrl()}/api/live-channels/guide`),'Could not load Live Channels guide');}
 export const liveChannelStreamUrl=(mediaId:string,offsetSeconds:number)=>`${serverBaseUrl()}/api/live-channels/play/${encodeURIComponent(mediaId)}/${Math.max(0,Math.floor(offsetSeconds))}`;
 
+export async function getLibraryScanProgress():Promise<ScanProgress>{if(!isTauriDesktop())return{active:false,phase:'idle',discovered:0,inspected:0,startedAt:0};return invoke<ScanProgress>('library_scan_progress');}
 export async function rescanLibrary():Promise<void>{if(!isTauriDesktop())throw new Error('Library rescans are managed from the desktop server app.');await invoke('scan_library');}
 export async function chooseLibraryPath():Promise<string|null>{if(!isTauriDesktop())return null;const{open}=await import('@tauri-apps/plugin-dialog');const selected=await open({directory:true,multiple:false});return typeof selected==='string'?selected:null;}
 export async function setLibraryPath(path:string):Promise<void>{if(!isTauriDesktop())throw new Error('Library folders are managed from the desktop server app.');await invoke('set_library_path',{path});}

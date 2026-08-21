@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { getActiveUserId, getLiveChannelGuide, isTauriDesktop, listLiveChannels } from '../api';
 import type { GuideChannel } from '../types';
+import { preloadMusicLibrary } from '../musicLibraryCache';
 
 const MIN_VISIBLE_MS=500;
 const MAX_VISIBLE_MS=15000;
@@ -29,6 +30,8 @@ export function StartupWarmup({children}:{children:React.ReactNode}){
     else {
       setMessage('Preparing Live TV…');
       try{const channels=await listLiveChannels();const ids=channels.map(channel=>channel.id);if(channels.length&&!cachedGuideHasRoom(ids)){const guide=await getLiveChannelGuide();localStorage.setItem(guideCacheKey(),JSON.stringify(guide))}}catch{/* Live TV remains optional */}
+      setMessage('Loading your music library…');
+      try{await preloadMusicLibrary()}catch{/* Music remains optional */}
       window.clearTimeout(timeout);finish();return;
     }
     await new Promise(resolve=>window.setTimeout(resolve,100));
@@ -36,5 +39,12 @@ export function StartupWarmup({children}:{children:React.ReactNode}){
   };
   void check();return()=>{disposed=true;window.clearTimeout(timeout)};
  },[desktop]);
+ useEffect(()=>{
+  let shownAt=0;let finishTimer:number|undefined;
+  const loading=(event:Event)=>{if(finishTimer)window.clearTimeout(finishTimer);shownAt=Date.now();const name=(event as CustomEvent<{name?:string}>).detail?.name;setMessage(name?`Loading ${name}…`:'Loading profile…');setReady(false)};
+  const loaded=()=>{const delay=Math.max(0,MIN_VISIBLE_MS-(Date.now()-shownAt));finishTimer=window.setTimeout(()=>setReady(true),delay)};
+  window.addEventListener('onyx-profile-loading',loading);window.addEventListener('onyx-profile-ready',loaded);
+  return()=>{if(finishTimer)window.clearTimeout(finishTimer);window.removeEventListener('onyx-profile-loading',loading);window.removeEventListener('onyx-profile-ready',loaded)};
+ },[]);
  return <>{children}{!ready&&<div className="startup-warmup" role="status" aria-live="polite"><div className="startup-warmup-inner"><div className="startup-mark">O</div><div><strong>Onyx</strong><span>{message}</span></div><LoaderCircle className="spin" size={17}/></div></div>}</>;
 }

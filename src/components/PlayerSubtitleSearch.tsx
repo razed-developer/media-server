@@ -7,7 +7,7 @@ import { SubtitleFinder } from './SubtitleFinder';
 
 function absolute(url?:string|null){if(!url)return'';const resolved=resolveMediaUrl(url);if(!resolved)return'';try{return new URL(resolved,window.location.href).href}catch{return resolved}}
 function cachedMedia():MediaItem[]{try{const raw=sessionStorage.getItem(`onyx-media-cache:${getActiveUserId()}`);return raw?JSON.parse(raw) as MediaItem[]:[]}catch{return[]}}
-function idFromSource(src:string){try{const path=new URL(src,window.location.href).pathname;const match=path.match(/\/(?:play|stream)\/([^/]+)/);return match?decodeURIComponent(match[1]):''}catch{return''}}
+function idFromSource(src:string){try{const path=new URL(src,window.location.href).pathname;const match=path.match(/\/(?:play|stream)\/([^/]+)/)||path.match(/\/api\/playback\/resume\/([^/]+)/);return match?decodeURIComponent(match[1]):''}catch{return''}}
 
 export function PlayerSubtitleSearch(){
  const[video,setVideo]=useState<HTMLVideoElement|null>(null);const[toolbar,setToolbar]=useState<HTMLElement|null>(null);const[item,setItem]=useState<MediaItem|null>(null);const[open,setOpen]=useState(false);
@@ -23,8 +23,9 @@ export function PlayerSubtitleSearch(){
     if(match){setItem(match);last=src;}
    }catch{if(!stopped)setItem(null)}finally{if(loading===src)loading='';}
   };
-  void discover();const observer=new MutationObserver(()=>void discover());observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});const timer=window.setInterval(()=>void discover(),500);
-  return()=>{stopped=true;observer.disconnect();window.clearInterval(timer)};
+  const schedule=()=>window.setTimeout(()=>void discover(),0);
+  void discover();document.addEventListener('click',schedule,true);const timer=window.setInterval(()=>void discover(),800);
+  return()=>{stopped=true;document.removeEventListener('click',schedule,true);window.clearInterval(timer)};
  },[]);
  const target=useMemo(()=>toolbar??document.body,[toolbar]);
  const downloaded=(track:SubtitleTrack)=>{if(!video||!track.url)return;for(let i=0;i<video.textTracks.length;i++)video.textTracks[i].mode='disabled';const el=document.createElement('track');el.kind='subtitles';el.src=resolveMediaUrl(track.url)??track.url;el.srclang=track.language;el.label=track.label;el.default=true;video.appendChild(el);const activate=()=>{try{el.track.mode='showing'}catch{}};activate();el.addEventListener('load',activate,{once:true});const select=document.querySelector<HTMLSelectElement>('.player-toolbar .subtitle-control select');if(select&&!Array.from(select.options).some(option=>option.text===track.label)){const option=document.createElement('option');option.value=String(video.textTracks.length-1);option.text=track.label;select.add(option);select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));}window.dispatchEvent(new CustomEvent('onyx-subtitle-downloaded',{detail:{mediaId:item?.id}}));}

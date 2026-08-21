@@ -2019,3 +2019,225 @@ For Onyx, the questions with the highest value would have been:
 If those fifteen questions had been discussed before the first serious implementation pass, Onyx would still have evolved, but a large portion of the heavy refactoring could have been avoided.
 
 That is the lesson worth carrying forward.
+
+---
+
+# 41. A better working agreement for directing an AI coding partner
+
+The architectural questions above describe **what** should be decided. A second lesson is that the development conversation itself needs a repeatable structure.
+
+The user should not need to write a complete technical specification or know which parts of an idea are architectural. That analysis is part of the assistant's job. However, a few explicit signals make the work much safer and faster.
+
+## Start each substantial request with outcome, constraints, and freedom
+
+A useful request can be short:
+
+```text
+Outcome: what should be true for the user when this is finished.
+Must preserve: behavior or appearance that already works.
+Constraints: platform, deployment, privacy, compatibility, or design limits.
+Freedom: what the assistant may decide without asking.
+Verification: how we will know it works.
+```
+
+The user should describe the desired experience in ordinary language. The assistant should translate it into UI, domain, persistence, API, security, and deployment implications.
+
+## The assistant should classify the request before coding
+
+For every non-trivial request, first decide whether it is:
+
+- a local UI change,
+- a domain/data change,
+- an architectural change,
+- a platform/deployment change.
+
+For architectural or platform changes, pause implementation long enough to state:
+
+- which existing assumptions change,
+- which parts of the application will be affected,
+- what data or behavior is at risk,
+- the recommended design,
+- any decision that genuinely requires the user.
+
+This keeps the user from needing to recognize architectural consequences on their own.
+
+## Separate discovery, decision, and implementation
+
+A productive sequence is:
+
+1. **Inspect** the current code, documentation, tests, and recent changes.
+2. **Restate** the intended outcome and identify hidden implications.
+3. **Decide** unresolved product behavior with the user only where choices materially differ.
+4. **Implement** one coherent slice.
+5. **Verify** both the new behavior and nearby existing behavior.
+6. **Record** durable decisions and the next useful step.
+
+Brainstorming should not silently become implementation. Conversely, once the user has clearly approved a direction, the assistant should proceed without repeatedly asking for confirmation on minor details.
+
+## Define the blast radius before making changes
+
+Before editing, identify:
+
+- files and layers likely to change,
+- existing features that share those paths,
+- migrations or compatibility concerns,
+- tests that should pass afterward.
+
+After editing, report whether the actual blast radius differed from the estimate.
+
+This is especially important in applications like Onyx where one visible control may affect React state, Rust commands, the HTTP API, the database, browser clients, and remote navigation.
+
+## Preserve behavior explicitly
+
+“Do not break existing functionality” is too broad to verify unless translated into a small regression list.
+
+For each feature slice, name the nearby behaviors that must still work. For example:
+
+```text
+Adding metadata refresh must preserve:
+- local artwork precedence,
+- manual identification overrides,
+- offline library browsing,
+- provider disablement,
+- existing watch state.
+```
+
+The assistant should derive this list from the code and product rules, then test it.
+
+## Use acceptance checks instead of relying on “looks good”
+
+Each task should end with observable checks such as:
+
+- the exact user journey that now works,
+- build/typecheck/test results,
+- migration behavior with existing data,
+- keyboard/remote behavior where relevant,
+- failure and offline behavior,
+- whether desktop and browser clients remain consistent.
+
+Visual approval is still important, but it should be one verification layer rather than the only one.
+
+## Keep a decision log and a current-state ledger
+
+Long projects lose context across sessions. Maintain two small durable records:
+
+### Decision log
+
+For choices that should not be casually revisited:
+
+```text
+Decision
+Reason
+Alternatives rejected
+Consequences
+Date/status
+```
+
+Examples include local artwork precedence, per-user provider connections, server-side tokens, and the role of Tauri versus the server core.
+
+### Current-state ledger
+
+For handoff between sessions:
+
+```text
+Working now
+Partially implemented
+Known broken
+Next recommended slice
+Commands/tests used
+Branch and unmerged work
+```
+
+This prevents a new session from reconstructing project truth from scattered chat messages.
+
+## Distinguish product truth from implementation suggestion
+
+The user often describes the experience they want; the assistant may propose a technical mechanism. These should not be recorded as equally permanent.
+
+Use labels such as:
+
+- **Product requirement** — what the user needs.
+- **Accepted decision** — a direction the user approved.
+- **Implementation choice** — replaceable technical detail.
+- **Open question** — deliberately unresolved.
+- **Future idea** — not authorized scope.
+
+This reduces the risk that a temporary implementation detail becomes mistaken for a product requirement.
+
+## Prefer vertical slices over broad partial scaffolding
+
+A slice should be useful and verifiable end to end. For example:
+
+```text
+Choose metadata provider
+→ save configuration
+→ identify one movie
+→ cache the result
+→ display it
+→ allow manual correction
+→ verify offline fallback
+```
+
+This is usually safer than partially creating every metadata screen, table, command, and API without one completed workflow.
+
+## Make uncertainty visible
+
+The assistant should clearly separate:
+
+- facts observed in the repository,
+- conclusions inferred from code,
+- assumptions made to continue,
+- questions that block a correct decision.
+
+When an assumption is reversible and low-risk, proceed and record it. When it affects stored data, security, architecture, or user-visible product behavior, ask first.
+
+## End each development session with a compact handoff
+
+Every substantial session should finish with:
+
+- what changed,
+- what was verified,
+- what remains incomplete,
+- any new risks or technical debt,
+- the best next step,
+- whether documentation and tests were updated.
+
+This is more valuable than a long chronological account of commands run.
+
+## A reusable prompt for future app work
+
+The user can use this without knowing the architecture:
+
+```text
+I want [user-visible outcome].
+
+Please inspect the current project before changing anything. Tell me if this request changes an architectural assumption or conflicts with an earlier decision. Preserve [important existing behavior].
+
+You may decide minor implementation details. Ask me only about choices that materially change the product, data, security, deployment, or user experience.
+
+Implement one coherent end-to-end slice, verify the new behavior and nearby regressions, update the project decision/current-state notes, and tell me the best next step.
+```
+
+The assistant should treat this as a default working agreement even when the user's actual request is much shorter.
+
+---
+
+# 42. The assistant has responsibilities too
+
+Better outcomes should not depend on the user learning to speak like a software architect.
+
+The assistant should proactively:
+
+- inspect before editing,
+- identify hidden architectural implications,
+- challenge contradictions with evidence,
+- preserve approved product principles,
+- avoid expanding scope from an interesting idea alone,
+- ask fewer but higher-value questions,
+- test adjacent behavior after shared-code changes,
+- document decisions while they are fresh,
+- admit uncertainty rather than converting guesses into project facts,
+- leave the repository in a state another session can understand.
+
+The best direction from the user is usually a clear statement of the desired experience and constraints. The assistant is responsible for turning that into disciplined engineering.
+

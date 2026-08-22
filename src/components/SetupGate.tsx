@@ -1,0 +1,555 @@
+import { useEffect, useState } from "react";
+import {
+  Check,
+  Film,
+  FolderOpen,
+  Music2,
+  Palette,
+  Plus,
+  Save,
+  Trash2,
+  Tv,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  chooseLibraryPath,
+  completeSetup,
+  createUser,
+  getSetupStatus,
+  isTauriDesktop,
+  renameUser,
+  rescanLibrary,
+  setActiveUserId,
+  setIbroadcastClientId,
+  setUserTheme,
+} from "../api";
+import { configureLibraryRoot } from "../libraryRootsApi";
+import type { SetupStatus, ThemeName, UserProfile } from "../types";
+import { IbroadcastConnect } from "./IbroadcastConnect";
+import { IbroadcastLogoKit } from "./IbroadcastLogoKit";
+import { SetupRestore } from "./SetupRestore";
+
+const themes: ThemeName[] = [
+  "onyx",
+  "midnight",
+  "ember",
+  "light",
+  "pink",
+  "royal",
+];
+const themeLabels: Record<ThemeName, string> = {
+  onyx: "Onyx",
+  midnight: "Midnight",
+  ember: "Ember",
+  light: "Light",
+  pink: "Light Pink",
+  royal: "Royal Purple",
+};
+export function SetupGate({ children }: { children: React.ReactNode }) {
+  const desktop = isTauriDesktop();
+  const [status, setStatus] = useState<SetupStatus | null>(
+    desktop ? null : { complete: true, users: [] },
+  );
+  const [step, setStep] = useState(0);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [selectedUser, setSelectedUser] = useState("owner");
+  const [clientId, setClientId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [newUserOpen, setNewUserOpen] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
+  const [restoreMode, setRestoreMode] = useState(false);
+  const syncUsers = (next: UserProfile[]) => {
+    setUsers(next);
+    setNameDrafts(Object.fromEntries(next.map((user) => [user.id, user.name])));
+  };
+  useEffect(() => {
+    if (!desktop) return;
+    getSetupStatus()
+      .then((value) => {
+        setStatus(value);
+        syncUsers(value.users);
+        setClientId(value.ibroadcastClientId ?? "");
+      })
+      .catch((c) => setError(String(c)));
+  }, [desktop]);
+  if (!desktop || status?.complete) return <>{children}</>;
+  if (!status)
+    return (
+      <div className="setup-shell">
+        <div className="setup-card">
+          <div className="brand-mark">O</div>
+          <h1>Onyx</h1>
+          <p>Preparing first-run setup…</p>
+        </div>
+      </div>
+    );
+  if (restoreMode)
+    return (
+      <SetupRestore
+        onCancel={() => setRestoreMode(false)}
+        onRestored={() => window.location.reload()}
+      />
+    );
+  const saveClient = async () => {
+    await setIbroadcastClientId(clientId);
+  };
+  const addUser = async () => {
+    const name = newUserName.trim();
+    if (!name) return;
+    try {
+      const next = await createUser(name);
+      syncUsers(next);
+      setNewUserName("");
+      setNewUserOpen(false);
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  const saveName = async (user: UserProfile) => {
+    const name = (nameDrafts[user.id] ?? user.name).trim();
+    if (!name || name === user.name) return;
+    try {
+      syncUsers(await renameUser(user.id, name));
+    } catch (c) {
+      setError(String(c));
+      setNameDrafts((current) => ({ ...current, [user.id]: user.name }));
+    }
+  };
+  const refreshStatus = async () => setStatus(await getSetupStatus());
+  const addFolder = async (kind: "movie" | "tv") => {
+    const path = await chooseLibraryPath();
+    if (!path) return;
+    setStatus((current) => {
+      if (!current) return current;
+      if (kind === "movie") {
+        const paths =
+          current.moviePaths ?? (current.moviePath ? [current.moviePath] : []);
+        return { ...current, moviePaths: [...new Set([...paths, path])] };
+      }
+      const paths = current.tvPaths ?? (current.tvPath ? [current.tvPath] : []);
+      return { ...current, tvPaths: [...new Set([...paths, path])] };
+    });
+    setError(null);
+    try {
+      await configureLibraryRoot(kind, path, true);
+      await refreshStatus();
+      setLibraryMessage(
+        "Folder added. Click “Scan selected folders” when you are ready.",
+      );
+    } catch (c) {
+      setError(String(c));
+      setLibraryMessage(null);
+      await refreshStatus().catch(() => undefined);
+    }
+  };
+  const removeFolder = async (kind: "movie" | "tv", path: string) => {
+    setError(null);
+    try {
+      await configureLibraryRoot(kind, path, false);
+      await refreshStatus();
+      setLibraryMessage(
+        "Folder removed. Click “Scan selected folders” when you are ready.",
+      );
+    } catch (c) {
+      setError(String(c));
+      setLibraryMessage(null);
+      await refreshStatus().catch(() => undefined);
+    }
+  };
+  const scanFolders = async () => {
+    setLibraryBusy(true);
+    setLibraryMessage(
+      "Scanning selected movie and TV folders… Large libraries can take several minutes.",
+    );
+    setError(null);
+    try {
+      await rescanLibrary();
+      setLibraryMessage("Library scan complete.");
+    } catch (c) {
+      setError(String(c));
+      setLibraryMessage(null);
+    } finally {
+      setLibraryBusy(false);
+    }
+  };
+  const theme = async (value: ThemeName) => {
+    const previous = document.documentElement.dataset.theme as
+      | ThemeName
+      | undefined;
+    setActiveUserId(selectedUser);
+    document.documentElement.dataset.theme = value;
+    try {
+      await setUserTheme(value);
+      setError(null);
+    } catch (c) {
+      document.documentElement.dataset.theme = previous ?? "onyx";
+      setError(String(c));
+    }
+  };
+  const finish = async () => {
+    try {
+      await saveClient();
+      await completeSetup();
+      setStatus({ ...status, complete: true });
+      window.location.reload();
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  const moviePaths =
+    status.moviePaths ?? (status.moviePath ? [status.moviePath] : []);
+  const tvPaths = status.tvPaths ?? (status.tvPath ? [status.tvPath] : []);
+  const roots = (kind: "movie" | "tv", paths: string[], Icon: typeof Film) => (
+    <div className="setup-folder-stack">
+      <div className="setup-folder">
+        <Icon size={22} />
+        <div>
+          <strong>{kind === "movie" ? "Movies" : "TV Shows"}</strong>
+          <span>
+            {paths.length
+              ? `${paths.length} ${paths.length === 1 ? "folder" : "folders"} selected`
+              : "Not selected"}
+          </span>
+        </div>
+        <button disabled={libraryBusy} onClick={() => void addFolder(kind)}>
+          <Plus size={16} />
+          Add folder
+        </button>
+      </div>
+      {paths.map((path) => (
+        <div className="setup-folder-path" key={path}>
+          <FolderOpen size={15} />
+          <span title={path}>{path}</span>
+          <button
+            disabled={libraryBusy}
+            className="icon-action danger-text"
+            aria-label={`Remove ${path}`}
+            onClick={() => void removeFolder(kind, path)}
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      ))}
+      {kind === "tv" && (
+        <button
+          className="primary"
+          disabled={libraryBusy || (!moviePaths.length && !tvPaths.length)}
+          onClick={() => void scanFolders()}
+        >
+          {libraryBusy ? "Scanning library…" : "Scan selected folders"}
+        </button>
+      )}
+    </div>
+  );
+  return (
+    <div className="setup-shell">
+      <div className="setup-layout">
+        <aside className="setup-steps">
+          <div className="setup-logo">
+            <span className="brand-mark">O</span>
+            <strong>Onyx</strong>
+          </div>
+          {[
+            "Welcome",
+            "Users",
+            "Appearance",
+            "Media",
+            "iBroadcast",
+            "Finish",
+          ].map((label, index) => (
+            <button
+              key={label}
+              className={step === index ? "active" : ""}
+              onClick={() => setStep(index)}
+            >
+              <span>{index + 1}</span>
+              {label}
+            </button>
+          ))}
+        </aside>
+        <main className="setup-content">
+          {error && <div className="error-banner">{error}</div>}
+          {step === 0 && (
+            <section>
+              <p className="eyebrow">CHOOSE INSTALL TYPE</p>
+              <h1>Welcome to Onyx.</h1>
+              <p className="setup-lead">
+                Start a new Onyx library or restore an existing installation
+                from an encrypted backup.
+              </p>
+              <div className="install-choice-grid">
+                <button
+                  className="install-choice primary"
+                  onClick={() => setStep(1)}
+                >
+                  <strong>Fresh installation</strong>
+                  <span>
+                    Create profiles, choose an appearance, and select media
+                    folders.
+                  </span>
+                </button>
+                <button
+                  className="install-choice"
+                  onClick={() => setRestoreMode(true)}
+                >
+                  <strong>Import from backup</strong>
+                  <span>
+                    Restore profiles, history, settings, credentials, and media
+                    locations.
+                  </span>
+                </button>
+              </div>
+            </section>
+          )}
+          {step === 1 && (
+            <section>
+              <Users size={34} />
+              <h1>Users</h1>
+              <p>
+                Create the profiles that will have independent watch history,
+                hidden media, playlists, themes, and music accounts. The
+                administrator starts as “Owner” only as a placeholder; type the
+                name you actually want to use.
+              </p>
+              <div className="setup-user-editor">
+                {users.map((user) => (
+                  <div className="setup-user-row" key={user.id}>
+                    <div className="user-avatar">
+                      {(nameDrafts[user.id] ?? user.name)
+                        .charAt(0)
+                        .toUpperCase()}
+                    </div>
+                    <label>
+                      <span>
+                        {user.isAdmin
+                          ? "Administrator profile"
+                          : "User profile"}
+                      </span>
+                      <input
+                        value={nameDrafts[user.id] ?? user.name}
+                        onChange={(e) =>
+                          setNameDrafts((current) => ({
+                            ...current,
+                            [user.id]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => void saveName(user)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveName(user);
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="icon-action"
+                      aria-label={`Save ${user.name}`}
+                      onClick={() => void saveName(user)}
+                    >
+                      <Save size={17} />
+                    </button>
+                  </div>
+                ))}
+                {newUserOpen ? (
+                  <div className="setup-user-row new-user-row">
+                    <div className="user-avatar">
+                      {newUserName.charAt(0).toUpperCase() || "+"}
+                    </div>
+                    <label>
+                      <span>New user</span>
+                      <input
+                        autoFocus
+                        value={newUserName}
+                        onChange={(e) => setNewUserName(e.target.value)}
+                        placeholder="Name"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void addUser();
+                          if (e.key === "Escape") {
+                            setNewUserOpen(false);
+                            setNewUserName("");
+                          }
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="icon-action"
+                      aria-label="Add user"
+                      onClick={() => void addUser()}
+                    >
+                      <Check size={17} />
+                    </button>
+                    <button
+                      className="icon-action"
+                      aria-label="Cancel"
+                      onClick={() => {
+                        setNewUserOpen(false);
+                        setNewUserName("");
+                      }}
+                    >
+                      <X size={17} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="add-user-card"
+                    onClick={() => setNewUserOpen(true)}
+                  >
+                    <Plus size={18} />
+                    Add another user
+                  </button>
+                )}
+              </div>
+              <div className="setup-actions">
+                <button onClick={() => setStep(0)}>Back</button>
+                <button className="primary" onClick={() => setStep(2)}>
+                  Continue
+                </button>
+              </div>
+            </section>
+          )}
+          {step === 2 && (
+            <section>
+              <Palette size={34} />
+              <h1>Appearance</h1>
+              <p>
+                Each user can have their own theme. Select a user, then choose a
+                theme.
+              </p>
+              <select
+                className="setup-select"
+                value={selectedUser}
+                onChange={(e) => {
+                  setSelectedUser(e.target.value);
+                  setActiveUserId(e.target.value);
+                }}
+              >
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+              <div className="theme-choice-grid">
+                {themes.map((value) => (
+                  <button
+                    key={value}
+                    className={`theme-choice theme-${value}`}
+                    onClick={() => void theme(value)}
+                  >
+                    <span />
+                    <strong>{themeLabels[value]}</strong>
+                  </button>
+                ))}
+              </div>
+              <div className="setup-actions">
+                <button onClick={() => setStep(1)}>Back</button>
+                <button className="primary" onClick={() => setStep(3)}>
+                  Continue
+                </button>
+              </div>
+            </section>
+          )}
+          {step === 3 && (
+            <section>
+              <FolderOpen size={34} />
+              <h1>Media libraries</h1>
+              <p>
+                Movies and television stay separate in Onyx, and each can span
+                multiple folders, drives, or network shares.
+              </p>
+              {libraryMessage && (
+                <div className="settings-card library-scan-status">
+                  <FolderOpen size={18} />
+                  <div>
+                    <strong>
+                      {libraryBusy
+                        ? "Library scan in progress"
+                        : "Library updated"}
+                    </strong>
+                    <p>{libraryMessage}</p>
+                  </div>
+                </div>
+              )}
+              {roots("movie", moviePaths, Film)}
+              {roots("tv", tvPaths, Tv)}
+              <div className="setup-actions">
+                <button disabled={libraryBusy} onClick={() => setStep(2)}>
+                  Back
+                </button>
+                <button
+                  disabled={libraryBusy}
+                  className="primary"
+                  onClick={() => setStep(4)}
+                >
+                  {libraryBusy ? "Scanning library…" : "Continue"}
+                </button>
+              </div>
+            </section>
+          )}
+          {step === 4 && (
+            <section>
+              <Music2 size={34} />
+              <h1>iBroadcast</h1>
+              <p>
+                Optional. In the iBroadcast web player open{" "}
+                <strong>Apps → developer</strong>, create an app for Onyx, use
+                the supplied 128×128 PNG below, then copy the app’s Client ID
+                into Onyx. Each Onyx profile can authorize its own iBroadcast
+                account afterward.
+              </p>
+              <IbroadcastLogoKit />
+              <label className="setup-field">
+                <span>iBroadcast client ID</span>
+                <input
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="Client ID"
+                  onBlur={() => void saveClient()}
+                />
+              </label>
+              <select
+                className="setup-select"
+                value={selectedUser}
+                onChange={(e) => {
+                  setSelectedUser(e.target.value);
+                  setActiveUserId(e.target.value);
+                }}
+              >
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+              <IbroadcastConnect />
+              <div className="setup-actions">
+                <button onClick={() => setStep(3)}>Back</button>
+                <button className="primary" onClick={() => setStep(5)}>
+                  Continue
+                </button>
+              </div>
+            </section>
+          )}
+          {step === 5 && (
+            <section>
+              <Check size={40} />
+              <h1>Onyx is ready.</h1>
+              <p className="setup-lead">
+                You can change every option later from Settings. iBroadcast
+                remains optional and compartmentalized from Movies and TV.
+              </p>
+              <div className="setup-actions">
+                <button onClick={() => setStep(4)}>Back</button>
+                <button className="primary" onClick={() => void finish()}>
+                  Finish setup
+                </button>
+              </div>
+            </section>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}

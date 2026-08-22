@@ -1,0 +1,14 @@
+/* Keep scrolling available without making Onyx look like a browser document. */
+*{scrollbar-width:thin;scrollbar-color:transparent transparent}
+*:hover{scrollbar-color:color-mix(in srgb,var(--muted) 28%,transparent) transparent}
+*::-webkit-scrollbar{width:6px;height:6px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:transparent;border-radius:8px}
+*:hover::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 28%,transparent)}
+*::-webkit-scrollbar-corner{background:transparent}
+
+/* Horizontal collections receive faint edge shadows only when more content
+   exists in that direction. JS maintains these data attributes. */
+[data-scroll-left="true"]{box-shadow:inset 18px 0 18px -20px color-mix(in srgb,var(--text) 45%,transparent)}
+[data-scroll-right="true"]{box-shadow:inset -18px 0 18px -20px color-mix(in srgb,var(--text) 45%,transparent)}
+[data-scroll-left="true"][data-scroll-right="true"]{box-shadow:inset 18px 0 18px -20px color-mix(in srgb,var(--text) 45%,transparent),inset -18px 0 18px -20px color-mix(in srgb,var(--text) 45%,transparent)}

@@ -1,0 +1,16 @@
+.sidebar-resume {
+  display: grid !important;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 7px 9px !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent) !important;
+  background: color-mix(in srgb, var(--panel) 86%, transparent) !important;
+  opacity: .72;
+}
+.sidebar-resume:hover,
+.sidebar-resume:focus-visible { opacity: 1; }
+.sidebar-resume > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 12px; }
+.sidebar-resume small { display: block; margin-bottom: 1px; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; opacity: .58; }
+.profile-menu .avatar-badge { opacity: .82; transform: scale(.9); }

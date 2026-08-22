@@ -69,6 +69,11 @@ pub fn parse_movie(path: &Path) -> ParsedName {
             .collect::<Vec<_>>()
             .join(" ");
     }
+    let mut words = title.split_whitespace().collect::<Vec<_>>();
+    if let Some(index) = words.iter().position(|token| looks_like_release_token(token) || starts_with_release_metadata(token)) {
+        words.truncate(index);
+        title = words.join(" ").trim_matches(['-', ' ']).to_string();
+    }
 
     ParsedName {
         title: if title.is_empty() { "Untitled".into() } else { title },
@@ -203,7 +208,7 @@ pub fn parse(path: &Path) -> ParsedName {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, parse_tv};
+    use super::{parse, parse_movie, parse_tv};
     use std::path::Path;
 
     #[test]
@@ -214,6 +219,14 @@ mod tests {
         assert_eq!(parsed.season, Some(2));
         assert_eq!(parsed.episode, Some(7));
         assert_eq!(parsed.title, "Episode Title");
+    }
+
+    #[test]
+    fn strips_movie_release_metadata() {
+        let parsed = parse_movie(Path::new("The.Movie.Title.2024.1080p.WEB-DL.x264-GROUP.mkv"));
+        assert_eq!(parsed.kind, "movie");
+        assert_eq!(parsed.title, "The Movie Title");
+        assert_eq!(parsed.year, Some(2024));
     }
 
     #[test]

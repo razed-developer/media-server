@@ -7,10 +7,20 @@ use std::{collections::HashMap, path::Path};
 
 const API: &str = "https://api.themoviedb.org/3";
 const KEYRING_SERVICE: &str = "onyx-metadata";
-const KEYRING_USER: &str = "tmdb-read-token";
+const LEGACY_KEYRING_USER: &str = "tmdb-read-token";
 
-fn token_entry() -> Result<Entry, String> { Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| format!("Could not open the operating-system credential store for TMDB: {e}")) }
-fn read_token() -> Result<String, String> { token_entry()?.get_password().map_err(|e| format!("TMDB credential could not be read from the operating-system credential store: {e}. Re-save the token in Settings → Metadata.")) }
+fn token_entry() -> Result<Entry, String> { Entry::new(KEYRING_SERVICE, &format!("tmdb-read-token:{}", crate::app_state::credential_scope())).map_err(|e| format!("Could not open the operating-system credential store for TMDB: {e}")) }
+fn read_token() -> Result<String, String> {
+    match token_entry()?.get_password() {
+        Ok(token) => Ok(token),
+        Err(keyring::Error::NoEntry) if !crate::app_state::portable_mode() => {
+            let token = Entry::new(KEYRING_SERVICE, LEGACY_KEYRING_USER).map_err(|e| e.to_string())?.get_password().map_err(|e| format!("TMDB credential could not be read: {e}"))?;
+            token_entry()?.set_password(&token).map_err(|e| e.to_string())?;
+            Ok(token)
+        }
+        Err(e) => Err(format!("TMDB credential could not be read for this Onyx installation: {e}. Re-save the token in Settings → Metadata.")),
+    }
+}
 pub(crate) fn export_token() -> Option<String> { read_token().ok() }
 pub(crate) fn import_token(token: &str) -> Result<(), String> { save_token(token) }
 pub fn configured() -> bool { read_token().is_ok() }
@@ -21,7 +31,7 @@ pub fn save_token(token: &str) -> Result<(), String> {
     if saved != token { return Err("TMDB credential verification failed after saving.".into()); }
     activity::info("Metadata", "TMDB credential saved and verified in the operating-system credential store"); Ok(())
 }
-pub fn clear_token() -> Result<(), String> { let entry = token_entry()?; let _ = entry.delete_credential(); activity::info("Metadata", "TMDB credential removed"); Ok(()) }
+pub fn clear_token() -> Result<(), String> { let entry = token_entry()?; let _ = entry.delete_credential(); activity::info("Metadata", "TMDB credential removed for this Onyx installation"); Ok(()) }
 fn token() -> Result<String, String> { read_token() }
 fn client() -> Client { Client::builder().user_agent("Onyx/0.1 metadata-provider").build().unwrap_or_else(|_| Client::new()) }
 async fn get_json(url: &str, params: &[(&str, String)]) -> Result<Value, String> {

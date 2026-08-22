@@ -204,6 +204,23 @@ fn remove_root(state: &crate::app_state::AppState, kind: &str, path: &str) -> Re
 }
 
 #[tauri::command]
+pub fn configure_library_root(kind: String, path: String, add: bool, state: TauriState<'_, Shared>) -> Result<(), String> {
+    if kind != "movie" && kind != "tv" { return Err("Unknown library type".into()); }
+    if add { validate_folder(&path)?; }
+    let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
+    let target = if kind == "movie" { &mut settings.movie_paths } else { &mut settings.tv_paths };
+    if add {
+        if !target.iter().any(|existing| Path::new(existing) == Path::new(&path)) { target.push(path); }
+    } else {
+        target.retain(|existing| Path::new(existing) != Path::new(&path));
+    }
+    target.sort(); target.dedup();
+    if kind == "movie" { settings.movie_path = target.first().cloned(); } else { settings.tv_path = target.first().cloned(); }
+    drop(settings);
+    persist_settings(&state)
+}
+
+#[tauri::command]
 pub fn setup_status(state: TauriState<'_, Shared>) -> Result<SetupStatus, String> {
     let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
     let movie_paths = settings.effective_movie_paths();

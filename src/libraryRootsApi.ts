@@ -10,3 +10,8 @@ export async function removeLibraryRoot(kind:'movie'|'tv', path:string):Promise<
   if(!isTauriDesktop()) throw new Error('Library folders are managed from the desktop server app.');
   await invoke(kind==='movie'?'remove_movie_path':'remove_tv_path',{path});
 }
+
+export async function configureLibraryRoot(kind:'movie'|'tv',path:string,add:boolean):Promise<void>{
+  if(!isTauriDesktop()) throw new Error('Library folders are managed from the desktop server app.');
+  await invoke('configure_library_root',{kind,path,add});
+}

@@ -8,7 +8,7 @@ use tauri::State;
 
 const API_ROOT: &str = "https://api.opensubtitles.com/api/v1";
 const KEYRING_SERVICE: &str = "onyx-subtitles";
-const KEYRING_USER: &str = "opensubtitles";
+const LEGACY_KEYRING_USER: &str = "opensubtitles";
 const APP_USER_AGENT: &str = "Onyx v0.1.0";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,10 +42,10 @@ pub struct DownloadedSubtitle {
     pub local_path:Option<String>,
 }
 
-fn entry()->Result<Entry,String>{Entry::new(KEYRING_SERVICE,KEYRING_USER).map_err(|e|format!("Could not open subtitle credential store: {e}"))}
-pub(crate) fn export_credentials()->Option<String>{entry().ok()?.get_password().ok()}
+fn entry()->Result<Entry,String>{Entry::new(KEYRING_SERVICE,&format!("opensubtitles:{}",crate::app_state::credential_scope())).map_err(|e|format!("Could not open subtitle credential store: {e}"))}
+pub(crate) fn export_credentials()->Option<String>{serde_json::to_string(&load().ok()?).ok()}
 pub(crate) fn import_credentials(raw:&str)->Result<(),String>{let _:Credentials=serde_json::from_str(raw).map_err(|_|"Invalid OpenSubtitles credentials in backup".to_string())?;entry()?.set_password(raw).map_err(|e|format!("Could not restore OpenSubtitles credentials: {e}"))}
-fn load()->Result<Credentials,String>{let raw=entry()?.get_password().map_err(|_|"OpenSubtitles is not configured. Add your API key and account in Settings → Subtitles.".to_string())?;serde_json::from_str(&raw).map_err(|e|e.to_string())}
+fn load()->Result<Credentials,String>{let raw=match entry()?.get_password(){Ok(raw)=>raw,Err(keyring::Error::NoEntry)if !crate::app_state::portable_mode()=>{let raw=Entry::new(KEYRING_SERVICE,LEGACY_KEYRING_USER).map_err(|e|e.to_string())?.get_password().map_err(|_|"OpenSubtitles is not configured. Add your API key and account in Settings → Subtitles.".to_string())?;entry()?.set_password(&raw).map_err(|e|e.to_string())?;raw},Err(_)=>return Err("OpenSubtitles is not configured for this Onyx installation. Add your API key and account in Settings → Subtitles.".into())};serde_json::from_str(&raw).map_err(|e|e.to_string())}
 fn client()->Client{Client::builder().user_agent(APP_USER_AGENT).build().unwrap_or_else(|_|Client::new())}
 
 pub fn status()->SubtitleProviderStatus{match load(){Ok(c)=>SubtitleProviderStatus{configured:true,provider:"OpenSubtitles".into(),account:c.username},Err(_)=>SubtitleProviderStatus{configured:false,provider:"OpenSubtitles".into(),account:String::new()}}}

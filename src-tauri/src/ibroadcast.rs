@@ -108,7 +108,7 @@ struct TokenRecord {
 }
 
 fn keyring_entry(user_id: &str) -> Result<Entry, String> {
-    Entry::new("Onyx iBroadcast", &format!("profile:{user_id}"))
+    Entry::new("Onyx iBroadcast", &format!("{}:profile:{user_id}", crate::app_state::credential_scope()))
         .map_err(|e| format!("Could not open secure credential store: {e}"))
 }
 
@@ -120,11 +120,19 @@ fn save_token(user_id: &str, token: &TokenRecord) -> Result<(), String> {
 fn load_token(user_id: &str) -> Result<Option<TokenRecord>, String> {
     match keyring_entry(user_id)?.get_password() {
         Ok(raw) => serde_json::from_str(&raw).map(Some).map_err(|e| e.to_string()),
+        Err(keyring::Error::NoEntry) if !crate::app_state::portable_mode() => {
+            let legacy = Entry::new("Onyx iBroadcast", &format!("profile:{user_id}")).map_err(|e| e.to_string())?;
+            match legacy.get_password() {
+                Ok(raw) => { keyring_entry(user_id)?.set_password(&raw).map_err(|e| e.to_string())?; serde_json::from_str(&raw).map(Some).map_err(|e| e.to_string()) }
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(e) => Err(format!("Could not read iBroadcast credentials: {e}")),
+            }
+        }
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("Could not read iBroadcast credentials: {e}")),
     }
 }
-pub(crate) fn export_token(user_id:&str)->Option<String>{keyring_entry(user_id).ok()?.get_password().ok()}
+pub(crate) fn export_token(user_id:&str)->Option<String>{let token=load_token(user_id).ok().flatten()?;serde_json::to_string(&token).ok()}
 pub(crate) fn import_token(user_id:&str,raw:&str)->Result<(),String>{let _:TokenRecord=serde_json::from_str(raw).map_err(|_|"Invalid iBroadcast credentials in backup".to_string())?;keyring_entry(user_id)?.set_password(raw).map_err(|e|format!("Could not restore iBroadcast credentials: {e}"))}
 
 fn delete_token(user_id: &str) -> Result<(), String> {

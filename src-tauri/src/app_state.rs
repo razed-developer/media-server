@@ -59,14 +59,25 @@ pub struct AppState {
 
 pub type Shared = Arc<AppState>;
 
+pub fn portable_mode() -> bool {
+    let portable_env = std::env::var("ONYX_PORTABLE").ok().is_some_and(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"));
+    let portable_flag = std::env::current_exe().ok().as_ref().and_then(|exe| exe.parent()).map(|dir| dir.join("onyx-portable.flag")).is_some_and(|flag| flag.is_file());
+    portable_env || portable_flag
+}
+
+pub fn credential_scope() -> String {
+    use sha2::{Digest, Sha256};
+    let path = app_data_dir().to_string_lossy().to_ascii_lowercase();
+    let digest = hex::encode(Sha256::digest(path.as_bytes()));
+    format!("instance:{}", &digest[..16])
+}
+
 /// Portable mode is enabled by setting ONYX_PORTABLE=1 or placing an
 /// `onyx-portable.flag` file beside the executable. Portable state then lives
 /// in an `OnyxData` folder beside the executable, including the first-run flag.
 pub fn app_data_dir() -> PathBuf {
-    let portable_env = std::env::var("ONYX_PORTABLE").ok().is_some_and(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"));
     let executable = std::env::current_exe().ok();
-    let portable_flag = executable.as_ref().and_then(|exe| exe.parent()).map(|dir| dir.join("onyx-portable.flag")).is_some_and(|flag| flag.is_file());
-    if portable_env || portable_flag {
+    if portable_mode() {
         if let Some(dir) = executable.as_ref().and_then(|exe| exe.parent()) { return dir.join("OnyxData"); }
     }
     // Keep the original data directory name so existing Home Media installs migrate into Onyx without losing state.

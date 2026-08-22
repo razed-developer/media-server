@@ -1,0 +1,128 @@
+.library-health-title,
+.health-toolbar,
+.health-item,
+.health-item-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.library-health-title {
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.library-health-title h1 {
+  margin-bottom: 6px;
+}
+.library-health-title p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+}
+.health-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.health-summary button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  text-align: left;
+  align-items: center;
+  padding: 14px;
+}
+.health-summary svg {
+  grid-row: 1/3;
+  color: var(--accent);
+}
+.health-summary strong {
+  font-size: 1.35rem;
+}
+.health-summary span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.health-summary button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+.health-toolbar {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.health-list {
+  display: grid;
+  gap: 10px;
+}
+.health-item {
+  justify-content: space-between;
+  margin: 0;
+}
+.health-item-copy {
+  min-width: 0;
+}
+.health-item-heading {
+  flex-wrap: wrap;
+}
+.health-item p {
+  margin: 7px 0;
+  color: var(--muted);
+}
+.health-item code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 760px;
+  color: var(--muted);
+}
+.health-item small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.health-status,
+.health-manual {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  text-transform: capitalize;
+  background: color-mix(in srgb, var(--warning, #d9a441) 18%, transparent);
+}
+.health-status.complete {
+  background: color-mix(in srgb, #49b979 18%, transparent);
+  color: #49b979;
+}
+.health-status.missing-file {
+  background: color-mix(in srgb, #d65b5b 18%, transparent);
+  color: #e27373;
+}
+.health-manual {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.health-result small {
+  display: block;
+  margin-top: 5px;
+}
+.health-loading,
+.health-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.health-empty svg {
+  color: #49b979;
+}
+@media (max-width: 760px) {
+  .library-health-title,
+  .health-toolbar,
+  .health-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .health-item > button {
+    align-self: flex-start;
+  }
+}

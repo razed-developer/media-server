@@ -1,62 +1,1130 @@
-import { useEffect, useState } from 'react';
-import { ArchiveRestore, Captions, Check, ClipboardList, Database, Film, FolderOpen, Image, KeyRound, Music2, Palette, Plus, Radio, RefreshCw, Save, Server, Tags, TerminalSquare, Trash2, Tv, UserRound, Users, X } from 'lucide-react';
-import { autoMatchMetadata, chooseBackupDestination, chooseBackupFile, chooseLibraryPath, clearAccessPassword, clearThumbnailCache, clearTmdbToken, createBackup, createUser, deleteUser, getActiveUserId, getLibraryScanProgress, getServerStatus, getUserPreferences, listUsers, metadataProviderStatus, previewBackup, renameUser, rescanLibrary, restoreBackup, setAccessPassword, setActiveUserId, setIbroadcastClientId, setTmdbToken, setUserTheme, testTmdb } from '../api';
-import { addLibraryRoot, removeLibraryRoot } from '../libraryRootsApi';
-import { activityEntries as loadActivityEntries, clearActivity } from '../adminTools';
-import { listUserAvatars, type UserAvatar } from '../userFeaturesApi';
-import type { ActivityEntry, BackupPreview, MetadataProviderStatus, RootMapping, ServerStatus, ScanProgress, ThemeName, UserProfile } from '../types';
-import { IbroadcastConnect } from './IbroadcastConnect';
-import { IbroadcastLogoKit } from './IbroadcastLogoKit';
-import { LiveChannelsSettings } from './LiveChannelsSettings';
-import { SubtitleSettings } from './SubtitleSettings';
-import { UserAvatarPicker, AvatarBadge } from './UserAvatarPicker';
-import { WishlistView } from './WishlistView';
-import '../activityConsole.css';
+import { useEffect, useState } from "react";
+import {
+  ArchiveRestore,
+  Captions,
+  Check,
+  ClipboardList,
+  Database,
+  Film,
+  FolderOpen,
+  Image,
+  HeartPulse,
+  KeyRound,
+  Music2,
+  Palette,
+  Plus,
+  Radio,
+  RefreshCw,
+  Save,
+  Server,
+  Tags,
+  TerminalSquare,
+  Trash2,
+  Tv,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  autoMatchMetadata,
+  chooseBackupDestination,
+  chooseBackupFile,
+  chooseLibraryPath,
+  clearAccessPassword,
+  clearThumbnailCache,
+  clearTmdbToken,
+  createBackup,
+  createUser,
+  deleteUser,
+  getActiveUserId,
+  getLibraryScanProgress,
+  getServerStatus,
+  getUserPreferences,
+  listUsers,
+  metadataProviderStatus,
+  previewBackup,
+  renameUser,
+  rescanLibrary,
+  restoreBackup,
+  setAccessPassword,
+  setActiveUserId,
+  setIbroadcastClientId,
+  setTmdbToken,
+  setUserTheme,
+  testTmdb,
+} from "../api";
+import { addLibraryRoot, removeLibraryRoot } from "../libraryRootsApi";
+import {
+  activityEntries as loadActivityEntries,
+  clearActivity,
+} from "../adminTools";
+import { listUserAvatars, type UserAvatar } from "../userFeaturesApi";
+import type {
+  ActivityEntry,
+  BackupPreview,
+  MetadataProviderStatus,
+  RootMapping,
+  ServerStatus,
+  ScanProgress,
+  ThemeName,
+  UserProfile,
+} from "../types";
+import { IbroadcastConnect } from "./IbroadcastConnect";
+import { IbroadcastLogoKit } from "./IbroadcastLogoKit";
+import { LiveChannelsSettings } from "./LiveChannelsSettings";
+import { LibraryHealthSettings } from "./LibraryHealthSettings";
+import { SubtitleSettings } from "./SubtitleSettings";
+import { UserAvatarPicker, AvatarBadge } from "./UserAvatarPicker";
+import { WishlistView } from "./WishlistView";
+import "../activityConsole.css";
 
-type Category='general'|'library'|'backup'|'metadata'|'users'|'requests'|'appearance'|'remote'|'music'|'subtitles'|'live'|'cache'|'activity';
-const themes:ThemeName[]=['onyx','midnight','ember','light','pink','royal'];
-const themeLabels:Record<ThemeName,string>={onyx:'Onyx',midnight:'Midnight',ember:'Ember',light:'Light',pink:'Light Pink',royal:'Royal Purple'};
+type Category =
+  | "general"
+  | "library"
+  | "health"
+  | "backup"
+  | "metadata"
+  | "users"
+  | "requests"
+  | "appearance"
+  | "remote"
+  | "music"
+  | "subtitles"
+  | "live"
+  | "cache"
+  | "activity";
+const themes: ThemeName[] = [
+  "onyx",
+  "midnight",
+  "ember",
+  "light",
+  "pink",
+  "royal",
+];
+const themeLabels: Record<ThemeName, string> = {
+  onyx: "Onyx",
+  midnight: "Midnight",
+  ember: "Ember",
+  light: "Light",
+  pink: "Light Pink",
+  royal: "Royal Purple",
+};
 
-export function SettingsPage({onChanged}:{onChanged?:()=>void}){
- const[category,setCategory]=useState<Category>('general');const[status,setStatus]=useState<ServerStatus|null>(null);const[users,setUsers]=useState<UserProfile[]>([]);const[avatars,setAvatars]=useState<Record<string,UserAvatar>>({});const[active,setActive]=useState(getActiveUserId());const[theme,setTheme]=useState<ThemeName>('onyx');const[clientId,setClientId]=useState('');const[error,setError]=useState<string|null>(null);const[newUserOpen,setNewUserOpen]=useState(false);const[newUserName,setNewUserName]=useState('');const[nameDrafts,setNameDrafts]=useState<Record<string,string>>({});const[providers,setProviders]=useState<MetadataProviderStatus[]>([]);const[tmdbToken,setTmdbTokenDraft]=useState('');const[metadataBusy,setMetadataBusy]=useState(false);const[metadataMessage,setMetadataMessage]=useState<string|null>(null);const[activity,setActivity]=useState<ActivityEntry[]>([]);const[libraryBusy,setLibraryBusy]=useState(false);const[libraryMessage,setLibraryMessage]=useState<string|null>(null);const[scanProgress,setScanProgress]=useState<ScanProgress|null>(null);const[backupPassword,setBackupPassword]=useState('');const[backupPath,setBackupPath]=useState('');const[backupPreview,setBackupPreview]=useState<BackupPreview|null>(null);const[rootMappings,setRootMappings]=useState<RootMapping[]>([]);const[restoreMode,setRestoreMode]=useState<'merge'|'replace'>('replace');const[backupBusy,setBackupBusy]=useState(false);const[backupMessage,setBackupMessage]=useState<string|null>(null);
- const syncUsers=(next:UserProfile[])=>{setUsers(next);setNameDrafts(Object.fromEntries(next.map(user=>[user.id,user.name])))};
- const syncAvatars=(next:UserAvatar[])=>setAvatars(Object.fromEntries(next.map(avatar=>[avatar.userId,avatar])));
- const refresh=async()=>{try{const[s,u,p,m,a]=await Promise.all([getServerStatus(),listUsers(),getUserPreferences(),metadataProviderStatus(),listUserAvatars()]);setStatus(s);syncUsers(u);syncAvatars(a);setTheme(p.theme);setClientId(s.ibroadcastClientId??'');setProviders(m);setError(null)}catch(c){setError(String(c))}};
- const refreshActivity=async()=>{try{setActivity(await loadActivityEntries())}catch(c){setError(String(c))}};
- useEffect(()=>{void refresh()},[]);
- useEffect(()=>{if(category!=='activity')return;void refreshActivity();const timer=window.setInterval(()=>void refreshActivity(),1500);return()=>window.clearInterval(timer)},[category]);
- useEffect(()=>{if(!libraryBusy)return;const update=()=>void getLibraryScanProgress().then(setScanProgress).catch(()=>undefined);update();const timer=window.setInterval(update,400);return()=>window.clearInterval(timer)},[libraryBusy]);
- const addFolder=async(kind:'movie'|'tv')=>{const path=await chooseLibraryPath();if(!path)return;setLibraryBusy(true);setLibraryMessage(`Scanning ${kind==='movie'?'movie':'TV'} folder… This can take several minutes for a large library.`);setError(null);try{await addLibraryRoot(kind,path);await refresh();onChanged?.();setLibraryMessage('Library scan complete.')}catch(c){setError(String(c));setLibraryMessage(null)}finally{setLibraryBusy(false)}};
- const removeFolder=async(kind:'movie'|'tv',path:string)=>{setLibraryBusy(true);setLibraryMessage('Updating folders and rescanning the library…');setError(null);try{await removeLibraryRoot(kind,path);await refresh();onChanged?.();setLibraryMessage('Library scan complete.')}catch(c){setError(String(c));setLibraryMessage(null)}finally{setLibraryBusy(false)}};
- const rescan=async()=>{setLibraryBusy(true);setLibraryMessage('Scanning all configured libraries… This can take several minutes.');setError(null);try{await rescanLibrary();onChanged?.();await refresh();setLibraryMessage('Library scan complete.')}catch(c){setError(String(c));setLibraryMessage(null)}finally{setLibraryBusy(false)}};
- const addUser=async()=>{const name=newUserName.trim();if(!name)return;try{syncUsers(await createUser(name));setNewUserName('');setNewUserOpen(false);await refresh();onChanged?.()}catch(c){setError(String(c))}};
- const saveUserName=async(user:UserProfile)=>{const name=(nameDrafts[user.id]??user.name).trim();if(!name||name===user.name)return;try{syncUsers(await renameUser(user.id,name));onChanged?.()}catch(c){setError(String(c));setNameDrafts(current=>({...current,[user.id]:user.name}))}};
- const removeUser=async(user:UserProfile)=>{if(user.isAdmin||!window.confirm(`Delete ${user.name}?`))return;try{syncUsers(await deleteUser(user.id));await refresh();onChanged?.()}catch(c){setError(String(c))}};
- const chooseUser=async(id:string)=>{setActiveUserId(id);setActive(id);const p=await getUserPreferences();setTheme(p.theme);onChanged?.()};
- const chooseTheme=async(value:ThemeName)=>{const previous=theme;setTheme(value);document.documentElement.dataset.theme=value;setError(null);try{const saved=await setUserTheme(value);if(saved.theme!==value){setTheme(saved.theme);document.documentElement.dataset.theme=saved.theme}}catch(c){setTheme(previous);document.documentElement.dataset.theme=previous;setError(String(c))}};
- const password=async()=>{try{if(status?.accessPasswordSet){if(window.confirm('Remove the browser access password?'))await clearAccessPassword();}else{const value=window.prompt('New browser access password (minimum 8 characters):');if(value)await setAccessPassword(value);}await refresh()}catch(c){setError(String(c))}};
- const saveTmdb=async()=>{const token=tmdbToken.trim();if(!token)return;setMetadataBusy(true);setMetadataMessage(null);try{await setTmdbToken(token);await testTmdb();setTmdbTokenDraft('');setMetadataMessage('TMDB connected successfully.');await refresh()}catch(c){setError(String(c))}finally{setMetadataBusy(false)}};
- const runAutoMatch=async()=>{setMetadataBusy(true);setMetadataMessage(null);try{const count=await autoMatchMetadata();setMetadataMessage(`${count} high-confidence ${count===1?'item':'items'} matched. Ambiguous media was left unchanged.`);onChanged?.()}catch(c){setError(String(c))}finally{setMetadataBusy(false)}};
- const makeBackup=async()=>{if(backupPassword.length<10){setError('Use a backup password of at least 10 characters.');return}const path=await chooseBackupDestination();if(!path)return;setBackupBusy(true);setError(null);try{const preview=await createBackup(path,backupPassword);setBackupMessage(`Encrypted backup created with ${preview.mediaItems} media records and ${preview.users} users.`)}catch(c){setError(String(c))}finally{setBackupBusy(false)}};
- const openBackup=async()=>{const path=await chooseBackupFile();if(!path)return;setBackupPath(path);setBackupPreview(null);setRootMappings([])};
- const inspectBackup=async()=>{if(!backupPath)return;setBackupBusy(true);setError(null);try{const preview=await previewBackup(backupPath,backupPassword);setBackupPreview(preview);setRootMappings([...preview.moviePaths,...preview.tvPaths].map(from=>({from,to:from})));setBackupMessage('Backup verified. Review the folder mappings before restoring.')}catch(c){setError(String(c))}finally{setBackupBusy(false)}};
- const runRestore=async()=>{if(!backupPath||!backupPreview||!window.confirm(`Restore this backup using ${restoreMode} mode? Onyx will create a safety backup first.`))return;setBackupBusy(true);setError(null);try{const report=await restoreBackup(backupPath,backupPassword,restoreMode,rootMappings.filter(v=>v.from!==v.to));setBackupMessage(`Restore complete: ${report.mediaItems} media records and ${report.users} users. Safety backup: ${report.safetyBackupPath}`);setBackupPreview(null);await refresh();onChanged?.()}catch(c){setError(String(c))}finally{setBackupBusy(false)}};
- const tmdb=providers.find(p=>p.provider==='tmdb');const tvdb=providers.find(p=>p.provider==='tvdb');
- const moviePaths=status?.moviePaths??(status?.moviePath?[status.moviePath]:[]);const tvPaths=status?.tvPaths??(status?.tvPath?[status.tvPath]:[]);const activeProfile=users.find(user=>user.id===active)??users[0];
- const roots=(kind:'movie'|'tv',paths:string[],Icon:typeof Film)=><div className="settings-card library-root-card"><div className="library-root-heading"><Icon/><div><h3>{kind==='movie'?'Movies':'TV Shows'}</h3><p>{paths.length?`${paths.length} ${paths.length===1?'folder':'folders'}`:'No folders selected'}</p></div><button disabled={libraryBusy} onClick={()=>void addFolder(kind)}><Plus size={16}/>{libraryBusy?'Scanning…':'Add folder'}</button></div><div className="library-root-list">{paths.map(path=><div className="library-root-row" key={path}><FolderOpen size={15}/><span title={path}>{path}</span><button disabled={libraryBusy} className="icon-action danger-text" aria-label={`Remove ${path}`} onClick={()=>void removeFolder(kind,path)}><Trash2 size={15}/></button></div>)}{!paths.length&&<p className="muted">Add one or more folders. Onyx scans all of them into the same {kind==='movie'?'movie':'TV'} library.</p>}</div></div>;
- return <div className="settings-page"><aside className="settings-nav"><h2>Settings</h2><button className={category==='general'?'active':''} onClick={()=>setCategory('general')}><Server size={18}/>General</button><button className={category==='library'?'active':''} onClick={()=>setCategory('library')}><Database size={18}/>Libraries</button><button className={category==='backup'?'active':''} onClick={()=>setCategory('backup')}><ArchiveRestore size={18}/>Backup & Restore</button><button className={category==='metadata'?'active':''} onClick={()=>setCategory('metadata')}><Tags size={18}/>Metadata</button><button className={category==='users'?'active':''} onClick={()=>setCategory('users')}><Users size={18}/>Users</button><button className={category==='requests'?'active':''} onClick={()=>setCategory('requests')}><ClipboardList size={18}/>Requests</button><button className={category==='appearance'?'active':''} onClick={()=>setCategory('appearance')}><Palette size={18}/>Appearance</button><button className={category==='remote'?'active':''} onClick={()=>setCategory('remote')}><KeyRound size={18}/>Remote access</button><button className={category==='music'?'active':''} onClick={()=>setCategory('music')}><Music2 size={18}/>Music</button><button className={category==='subtitles'?'active':''} onClick={()=>setCategory('subtitles')}><Captions size={18}/>Subtitles</button><button className={category==='live'?'active':''} onClick={()=>setCategory('live')}><Radio size={18}/>Live TV</button><button className={category==='cache'?'active':''} onClick={()=>setCategory('cache')}><Image size={18}/>Cache</button><button className={category==='activity'?'active':''} onClick={()=>setCategory('activity')}><TerminalSquare size={18}/>Activity</button></aside><section className="settings-content">{error&&<div className="error-banner">{error}</div>}
- {category==='general'&&<><p className="eyebrow">ONYX</p><h1>General</h1><div className="settings-card"><h3>Server</h3><p>{status?.localUrl??'Starting…'}</p><dl><div><dt>Media items</dt><dd>{status?.itemCount??0}</dd></div><div><dt>FFmpeg</dt><dd>{status?.ffmpegAvailable?'Available':'Not found'}</dd></div><div><dt>FFprobe</dt><dd>{status?.ffprobeAvailable?'Available':'Not found'}</dd></div></dl></div></>}
- {category==='library'&&<><p className="eyebrow">MEDIA</p><h1>Libraries</h1>{libraryMessage&&<div className="settings-card library-scan-status"><RefreshCw className={libraryBusy?'spin':''} size={18}/><div><strong>{libraryBusy?'Library scan in progress':'Library updated'}</strong><p>{libraryMessage}</p>{libraryBusy&&scanProgress&&<><p className="scan-counts">{scanProgress.phase==='discovering'?`${scanProgress.discovered} media files discovered`:`${scanProgress.inspected} of ${scanProgress.discovered} media files inspected`}</p>{scanProgress.currentPath&&<code title={scanProgress.currentPath}>{scanProgress.currentPath}</code>}</>}</div></div>}{roots('movie',moviePaths,Film)}{roots('tv',tvPaths,Tv)}<button disabled={libraryBusy} onClick={()=>void rescan()}><RefreshCw className={libraryBusy?'spin':''} size={17}/>{libraryBusy?'Scanning libraries…':'Rescan libraries'}</button></>}
- {category==='backup'&&<><p className="eyebrow">DATA SAFETY</p><h1>Backup & Restore</h1>{backupMessage&&<div className="settings-success">{backupMessage}</div>}<div className="settings-card backup-card"><h3>Create encrypted backup</h3><p>Includes settings, profiles, watch progress, playlists, matches, requests, provider state, Onyx-managed subtitles, and saved provider credentials. Media files and regenerable artwork are excluded.</p><label className="setup-field"><span>Backup password</span><input type="password" autoComplete="new-password" value={backupPassword} onChange={e=>setBackupPassword(e.target.value)} placeholder="At least 10 characters"/></label><button className="primary" disabled={backupBusy||backupPassword.length<10} onClick={()=>void makeBackup()}><Save size={16}/>Create backup file</button></div><div className="settings-card backup-card"><h3>Restore backup</h3><p>Choose a backup, verify it, then adjust any media roots whose drive or parent folder changed.</p><div className="backup-actions"><button disabled={backupBusy} onClick={()=>void openBackup()}><FolderOpen size={16}/>Choose backup</button>{backupPath&&<code title={backupPath}>{backupPath}</code>}<button disabled={backupBusy||!backupPath||backupPassword.length<10} onClick={()=>void inspectBackup()}><RefreshCw size={16}/>Verify & preview</button></div>{backupPreview&&<div className="backup-preview"><p><strong>{backupPreview.mediaItems}</strong> media records · <strong>{backupPreview.users}</strong> users · created {new Date(backupPreview.createdAt*1000).toLocaleString()}</p><p>Credentials: {[backupPreview.includesTmdb&&'TMDB',backupPreview.includesSubtitles&&'OpenSubtitles',backupPreview.includesIbroadcast&&'iBroadcast'].filter(Boolean).join(', ')||'none'}</p><h4>Media folder mapping</h4>{rootMappings.map((mapping,index)=><label className="root-mapping" key={`${mapping.from}-${index}`}><span title={mapping.from}>{mapping.from}</span><span>→</span><input value={mapping.to} onChange={e=>setRootMappings(current=>current.map((item,i)=>i===index?{...item,to:e.target.value}:item))}/></label>)}<label className="setup-field"><span>Restore mode</span><select value={restoreMode} onChange={e=>setRestoreMode(e.target.value as 'merge'|'replace')}><option value="replace">Replace current Onyx data</option><option value="merge">Merge with current Onyx data</option></select></label><p className="muted">A password-protected safety backup of the current installation is created beside the selected backup before any data changes.</p><button className="primary" disabled={backupBusy} onClick={()=>void runRestore()}><ArchiveRestore size={16}/>Restore backup</button></div>}</div></>}
- {category==='metadata'&&<><p className="eyebrow">IDENTIFICATION</p><h1>Metadata</h1>{metadataMessage&&<div className="settings-success">{metadataMessage}</div>}<div className="settings-card metadata-provider-card"><div className="provider-title"><div><strong>TMDB</strong><span className="primary-provider">Primary</span></div><span className={tmdb?.configured?'provider-connected':'provider-offline'}>{tmdb?.configured?'Configured':'Not configured'}</span></div><label className="setup-field"><span>API Read Access Token</span><input type="password" value={tmdbToken} onChange={e=>setTmdbTokenDraft(e.target.value)} placeholder={tmdb?.configured?'•••••••• configured — enter a new token to replace':'Paste TMDB API Read Access Token'}/></label><div className="metadata-actions"><button className="primary" disabled={metadataBusy||!tmdbToken.trim()} onClick={()=>void saveTmdb()}><Save size={16}/>Save & test</button>{tmdb?.configured&&<><button disabled={metadataBusy} onClick={async()=>{setMetadataBusy(true);try{await testTmdb();setMetadataMessage('TMDB connection is working.')}catch(c){setError(String(c))}finally{setMetadataBusy(false)}}}>Test connection</button><button disabled={metadataBusy} onClick={()=>void runAutoMatch()}><RefreshCw size={16}/>Match unmatched media</button><button className="danger-text" onClick={async()=>{await clearTmdbToken();setMetadataMessage('TMDB disconnected. Existing cached metadata remains available.');await refresh()}}>Disconnect</button></>}</div><p className="metadata-attribution">{tmdb?.attribution}</p></div><div className="settings-card metadata-provider-card disabled-provider"><div className="provider-title"><div><strong>TheTVDB</strong><span>Optional secondary provider</span></div><span className="provider-offline">Not enabled</span></div><p className="metadata-attribution">{tvdb?.attribution}</p></div></>}
- {category==='users'&&<><p className="eyebrow">PROFILES</p><h1>Users</h1><div className="settings-user-list">{users.map(user=><div className="settings-card settings-user-profile" key={user.id}><div className="settings-user-row"><AvatarBadge avatar={avatars[user.id]} name={user.name}/><label><span>{user.isAdmin?'Administrator profile':'User profile'}</span><input value={nameDrafts[user.id]??user.name} onChange={e=>setNameDrafts(current=>({...current,[user.id]:e.target.value}))} onBlur={()=>void saveUserName(user)} onKeyDown={e=>{if(e.key==='Enter')void saveUserName(user)}}/></label><button className="icon-action" aria-label={`Save ${user.name}`} onClick={()=>void saveUserName(user)}><Save size={16}/></button><button onClick={()=>void chooseUser(user.id)}>{user.id===active?'Current':'Switch'}</button>{!user.isAdmin&&<button className="danger-text" onClick={()=>void removeUser(user)}>Delete</button>}</div><UserAvatarPicker userId={user.id} name={nameDrafts[user.id]??user.name} avatar={avatars[user.id]} onChanged={avatar=>{setAvatars(current=>({...current,[user.id]:avatar}));onChanged?.()}}/></div>)}{newUserOpen?<div className="settings-card settings-user-row"><UserRound/><label><span>New user</span><input autoFocus value={newUserName} onChange={e=>setNewUserName(e.target.value)} placeholder="Name" onKeyDown={e=>{if(e.key==='Enter')void addUser();if(e.key==='Escape'){setNewUserOpen(false);setNewUserName('')}}}/></label><button className="icon-action" aria-label="Add user" onClick={()=>void addUser()}><Check size={16}/></button><button className="icon-action" aria-label="Cancel" onClick={()=>{setNewUserOpen(false);setNewUserName('')}}><X size={16}/></button></div>:<button onClick={()=>setNewUserOpen(true)}><Plus size={17}/>Add user</button>}</div></>}
- {category==='requests'&&activeProfile&&<WishlistView user={activeProfile}/>} 
- {category==='appearance'&&<><p className="eyebrow">PROFILE</p><h1>Appearance</h1><div className="theme-choice-grid">{themes.map(value=><button key={value} className={`theme-choice theme-${value} ${theme===value?'active':''}`} onClick={()=>void chooseTheme(value)}><span/><strong>{themeLabels[value]}</strong></button>)}</div></>}
- {category==='remote'&&<><p className="eyebrow">NETWORK</p><h1>Remote access</h1><div className="settings-card"><h3>Browser access</h3><p>LAN address: {status?.localUrl}</p><button onClick={()=>void password()}>{status?.accessPasswordSet?'Remove access password':'Set access password'}</button><p className="muted">Do not expose port 8765 directly to the internet. Use Tailscale or an HTTPS reverse proxy.</p></div></>}
- {category==='music'&&<><p className="eyebrow">PROVIDER</p><h1>iBroadcast</h1><IbroadcastLogoKit/><label className="setup-field"><span>Onyx iBroadcast client ID</span><input value={clientId} onChange={e=>setClientId(e.target.value)} placeholder="Client ID"/><button onClick={async()=>{try{await setIbroadcastClientId(clientId);await refresh()}catch(c){setError(String(c))}}}>Save</button></label><IbroadcastConnect onConnected={()=>void refresh()}/></>}
- {category==='subtitles'&&<SubtitleSettings/>}
- {category==='live'&&<LiveChannelsSettings/>}
- {category==='cache'&&<><p className="eyebrow">STORAGE</p><h1>Cache</h1><div className="settings-card"><h3>Artwork</h3><p>{Math.round((status?.artworkCacheBytes??0)/1024/1024)} MB used</p><button onClick={async()=>{await clearThumbnailCache();await refresh()}}>Clear generated episode thumbnails</button></div></>}
- {category==='activity'&&<><p className="eyebrow">DIAGNOSTICS</p><h1>Activity Console</h1><div className="activity-toolbar"><span>{activity.length} recent events</span><div><button onClick={()=>void refreshActivity()}><RefreshCw size={16}/>Refresh</button><button onClick={async()=>{await clearActivity();await refreshActivity()}}>Clear</button></div></div><div className="activity-console">{activity.length===0?<div className="activity-empty">No activity recorded yet.</div>:activity.map((entry,index)=><div className="activity-row" key={`${entry.timestamp}-${index}`}><span className="activity-time">{new Date(entry.timestamp*1000).toLocaleTimeString()}</span><span className={`activity-level ${entry.level}`}>{entry.level}</span><span className="activity-category">{entry.category}</span><span className="activity-message">{entry.message}</span></div>)}</div></>}
- </section></div>;
+export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
+  const [category, setCategory] = useState<Category>("general");
+  const [status, setStatus] = useState<ServerStatus | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [avatars, setAvatars] = useState<Record<string, UserAvatar>>({});
+  const [active, setActive] = useState(getActiveUserId());
+  const [theme, setTheme] = useState<ThemeName>("onyx");
+  const [clientId, setClientId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [newUserOpen, setNewUserOpen] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [providers, setProviders] = useState<MetadataProviderStatus[]>([]);
+  const [tmdbToken, setTmdbTokenDraft] = useState("");
+  const [metadataBusy, setMetadataBusy] = useState(false);
+  const [metadataMessage, setMetadataMessage] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [backupPassword, setBackupPassword] = useState("");
+  const [backupPath, setBackupPath] = useState("");
+  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(
+    null,
+  );
+  const [rootMappings, setRootMappings] = useState<RootMapping[]>([]);
+  const [restoreMode, setRestoreMode] = useState<"merge" | "replace">(
+    "replace",
+  );
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const syncUsers = (next: UserProfile[]) => {
+    setUsers(next);
+    setNameDrafts(Object.fromEntries(next.map((user) => [user.id, user.name])));
+  };
+  const syncAvatars = (next: UserAvatar[]) =>
+    setAvatars(
+      Object.fromEntries(next.map((avatar) => [avatar.userId, avatar])),
+    );
+  const refresh = async () => {
+    try {
+      const [s, u, p, m, a] = await Promise.all([
+        getServerStatus(),
+        listUsers(),
+        getUserPreferences(),
+        metadataProviderStatus(),
+        listUserAvatars(),
+      ]);
+      setStatus(s);
+      syncUsers(u);
+      syncAvatars(a);
+      setTheme(p.theme);
+      setClientId(s.ibroadcastClientId ?? "");
+      setProviders(m);
+      setError(null);
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  const refreshActivity = async () => {
+    try {
+      setActivity(await loadActivityEntries());
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  useEffect(() => {
+    void refresh();
+  }, []);
+  useEffect(() => {
+    if (category !== "activity") return;
+    void refreshActivity();
+    const timer = window.setInterval(() => void refreshActivity(), 1500);
+    return () => window.clearInterval(timer);
+  }, [category]);
+  useEffect(() => {
+    if (!libraryBusy) return;
+    const update = () =>
+      void getLibraryScanProgress()
+        .then(setScanProgress)
+        .catch(() => undefined);
+    update();
+    const timer = window.setInterval(update, 400);
+    return () => window.clearInterval(timer);
+  }, [libraryBusy]);
+  const addFolder = async (kind: "movie" | "tv") => {
+    const path = await chooseLibraryPath();
+    if (!path) return;
+    setLibraryBusy(true);
+    setLibraryMessage(
+      `Scanning ${kind === "movie" ? "movie" : "TV"} folder… This can take several minutes for a large library.`,
+    );
+    setError(null);
+    try {
+      await addLibraryRoot(kind, path);
+      await refresh();
+      onChanged?.();
+      setLibraryMessage("Library scan complete.");
+    } catch (c) {
+      setError(String(c));
+      setLibraryMessage(null);
+    } finally {
+      setLibraryBusy(false);
+    }
+  };
+  const removeFolder = async (kind: "movie" | "tv", path: string) => {
+    setLibraryBusy(true);
+    setLibraryMessage("Updating folders and rescanning the library…");
+    setError(null);
+    try {
+      await removeLibraryRoot(kind, path);
+      await refresh();
+      onChanged?.();
+      setLibraryMessage("Library scan complete.");
+    } catch (c) {
+      setError(String(c));
+      setLibraryMessage(null);
+    } finally {
+      setLibraryBusy(false);
+    }
+  };
+  const rescan = async () => {
+    setLibraryBusy(true);
+    setLibraryMessage(
+      "Scanning all configured libraries… This can take several minutes.",
+    );
+    setError(null);
+    try {
+      await rescanLibrary();
+      onChanged?.();
+      await refresh();
+      setLibraryMessage("Library scan complete.");
+    } catch (c) {
+      setError(String(c));
+      setLibraryMessage(null);
+    } finally {
+      setLibraryBusy(false);
+    }
+  };
+  const addUser = async () => {
+    const name = newUserName.trim();
+    if (!name) return;
+    try {
+      syncUsers(await createUser(name));
+      setNewUserName("");
+      setNewUserOpen(false);
+      await refresh();
+      onChanged?.();
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  const saveUserName = async (user: UserProfile) => {
+    const name = (nameDrafts[user.id] ?? user.name).trim();
+    if (!name || name === user.name) return;
+    try {
+      syncUsers(await renameUser(user.id, name));
+      onChanged?.();
+    } catch (c) {
+      setError(String(c));
+      setNameDrafts((current) => ({ ...current, [user.id]: user.name }));
+    }
+  };
+  const removeUser = async (user: UserProfile) => {
+    if (user.isAdmin || !window.confirm(`Delete ${user.name}?`)) return;
+    try {
+      syncUsers(await deleteUser(user.id));
+      await refresh();
+      onChanged?.();
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  const chooseUser = async (id: string) => {
+    setActiveUserId(id);
+    setActive(id);
+    const p = await getUserPreferences();
+    setTheme(p.theme);
+    onChanged?.();
+  };
+  const chooseTheme = async (value: ThemeName) => {
+    const previous = theme;
+    setTheme(value);
+    document.documentElement.dataset.theme = value;
+    setError(null);
+    try {
+      const saved = await setUserTheme(value);
+      if (saved.theme !== value) {
+        setTheme(saved.theme);
+        document.documentElement.dataset.theme = saved.theme;
+      }
+    } catch (c) {
+      setTheme(previous);
+      document.documentElement.dataset.theme = previous;
+      setError(String(c));
+    }
+  };
+  const password = async () => {
+    try {
+      if (status?.accessPasswordSet) {
+        if (window.confirm("Remove the browser access password?"))
+          await clearAccessPassword();
+      } else {
+        const value = window.prompt(
+          "New browser access password (minimum 8 characters):",
+        );
+        if (value) await setAccessPassword(value);
+      }
+      await refresh();
+    } catch (c) {
+      setError(String(c));
+    }
+  };
+  const saveTmdb = async () => {
+    const token = tmdbToken.trim();
+    if (!token) return;
+    setMetadataBusy(true);
+    setMetadataMessage(null);
+    try {
+      await setTmdbToken(token);
+      await testTmdb();
+      setTmdbTokenDraft("");
+      setMetadataMessage("TMDB connected successfully.");
+      await refresh();
+    } catch (c) {
+      setError(String(c));
+    } finally {
+      setMetadataBusy(false);
+    }
+  };
+  const runAutoMatch = async () => {
+    setMetadataBusy(true);
+    setMetadataMessage(null);
+    try {
+      const count = await autoMatchMetadata();
+      setMetadataMessage(
+        `${count} high-confidence ${count === 1 ? "item" : "items"} matched. Ambiguous media was left unchanged.`,
+      );
+      onChanged?.();
+    } catch (c) {
+      setError(String(c));
+    } finally {
+      setMetadataBusy(false);
+    }
+  };
+  const makeBackup = async () => {
+    if (backupPassword.length < 10) {
+      setError("Use a backup password of at least 10 characters.");
+      return;
+    }
+    const path = await chooseBackupDestination();
+    if (!path) return;
+    setBackupBusy(true);
+    setError(null);
+    try {
+      const preview = await createBackup(path, backupPassword);
+      setBackupMessage(
+        `Encrypted backup created with ${preview.mediaItems} media records and ${preview.users} users.`,
+      );
+    } catch (c) {
+      setError(String(c));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const openBackup = async () => {
+    const path = await chooseBackupFile();
+    if (!path) return;
+    setBackupPath(path);
+    setBackupPreview(null);
+    setRootMappings([]);
+  };
+  const inspectBackup = async () => {
+    if (!backupPath) return;
+    setBackupBusy(true);
+    setError(null);
+    try {
+      const preview = await previewBackup(backupPath, backupPassword);
+      setBackupPreview(preview);
+      setRootMappings(
+        [...preview.moviePaths, ...preview.tvPaths].map((from) => ({
+          from,
+          to: from,
+        })),
+      );
+      setBackupMessage(
+        "Backup verified. Review the folder mappings before restoring.",
+      );
+    } catch (c) {
+      setError(String(c));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const runRestore = async () => {
+    if (
+      !backupPath ||
+      !backupPreview ||
+      !window.confirm(
+        `Restore this backup using ${restoreMode} mode? Onyx will create a safety backup first.`,
+      )
+    )
+      return;
+    setBackupBusy(true);
+    setError(null);
+    try {
+      const report = await restoreBackup(
+        backupPath,
+        backupPassword,
+        restoreMode,
+        rootMappings.filter((v) => v.from !== v.to),
+      );
+      setBackupMessage(
+        `Restore complete: ${report.mediaItems} media records and ${report.users} users. Safety backup: ${report.safetyBackupPath}`,
+      );
+      setBackupPreview(null);
+      await refresh();
+      onChanged?.();
+    } catch (c) {
+      setError(String(c));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const tmdb = providers.find((p) => p.provider === "tmdb");
+  const tvdb = providers.find((p) => p.provider === "tvdb");
+  const moviePaths =
+    status?.moviePaths ?? (status?.moviePath ? [status.moviePath] : []);
+  const tvPaths = status?.tvPaths ?? (status?.tvPath ? [status.tvPath] : []);
+  const activeProfile = users.find((user) => user.id === active) ?? users[0];
+  const roots = (kind: "movie" | "tv", paths: string[], Icon: typeof Film) => (
+    <div className="settings-card library-root-card">
+      <div className="library-root-heading">
+        <Icon />
+        <div>
+          <h3>{kind === "movie" ? "Movies" : "TV Shows"}</h3>
+          <p>
+            {paths.length
+              ? `${paths.length} ${paths.length === 1 ? "folder" : "folders"}`
+              : "No folders selected"}
+          </p>
+        </div>
+        <button disabled={libraryBusy} onClick={() => void addFolder(kind)}>
+          <Plus size={16} />
+          {libraryBusy ? "Scanning…" : "Add folder"}
+        </button>
+      </div>
+      <div className="library-root-list">
+        {paths.map((path) => (
+          <div className="library-root-row" key={path}>
+            <FolderOpen size={15} />
+            <span title={path}>{path}</span>
+            <button
+              disabled={libraryBusy}
+              className="icon-action danger-text"
+              aria-label={`Remove ${path}`}
+              onClick={() => void removeFolder(kind, path)}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+        {!paths.length && (
+          <p className="muted">
+            Add one or more folders. Onyx scans all of them into the same{" "}
+            {kind === "movie" ? "movie" : "TV"} library.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+  return (
+    <div className="settings-page">
+      <aside className="settings-nav">
+        <h2>Settings</h2>
+        <button
+          className={category === "general" ? "active" : ""}
+          onClick={() => setCategory("general")}
+        >
+          <Server size={18} />
+          General
+        </button>
+        <button
+          className={category === "library" ? "active" : ""}
+          onClick={() => setCategory("library")}
+        >
+          <Database size={18} />
+          Libraries
+        </button>
+        <button
+          className={category === "backup" ? "active" : ""}
+          onClick={() => setCategory("backup")}
+        >
+          <ArchiveRestore size={18} />
+          Backup & Restore
+        </button>
+        <button
+          className={category === "health" ? "active" : ""}
+          onClick={() => setCategory("health")}
+        >
+          <HeartPulse size={18} />
+          Library Health
+        </button>
+        <button
+          className={category === "metadata" ? "active" : ""}
+          onClick={() => setCategory("metadata")}
+        >
+          <Tags size={18} />
+          Metadata
+        </button>
+        <button
+          className={category === "users" ? "active" : ""}
+          onClick={() => setCategory("users")}
+        >
+          <Users size={18} />
+          Users
+        </button>
+        <button
+          className={category === "requests" ? "active" : ""}
+          onClick={() => setCategory("requests")}
+        >
+          <ClipboardList size={18} />
+          Requests
+        </button>
+        <button
+          className={category === "appearance" ? "active" : ""}
+          onClick={() => setCategory("appearance")}
+        >
+          <Palette size={18} />
+          Appearance
+        </button>
+        <button
+          className={category === "remote" ? "active" : ""}
+          onClick={() => setCategory("remote")}
+        >
+          <KeyRound size={18} />
+          Remote access
+        </button>
+        <button
+          className={category === "music" ? "active" : ""}
+          onClick={() => setCategory("music")}
+        >
+          <Music2 size={18} />
+          Music
+        </button>
+        <button
+          className={category === "subtitles" ? "active" : ""}
+          onClick={() => setCategory("subtitles")}
+        >
+          <Captions size={18} />
+          Subtitles
+        </button>
+        <button
+          className={category === "live" ? "active" : ""}
+          onClick={() => setCategory("live")}
+        >
+          <Radio size={18} />
+          Live TV
+        </button>
+        <button
+          className={category === "cache" ? "active" : ""}
+          onClick={() => setCategory("cache")}
+        >
+          <Image size={18} />
+          Cache
+        </button>
+        <button
+          className={category === "activity" ? "active" : ""}
+          onClick={() => setCategory("activity")}
+        >
+          <TerminalSquare size={18} />
+          Activity
+        </button>
+      </aside>
+      <section className="settings-content">
+        {error && <div className="error-banner">{error}</div>}
+        {category === "general" && (
+          <>
+            <p className="eyebrow">ONYX</p>
+            <h1>General</h1>
+            <div className="settings-card">
+              <h3>Server</h3>
+              <p>{status?.localUrl ?? "Starting…"}</p>
+              <dl>
+                <div>
+                  <dt>Media items</dt>
+                  <dd>{status?.itemCount ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>FFmpeg</dt>
+                  <dd>{status?.ffmpegAvailable ? "Available" : "Not found"}</dd>
+                </div>
+                <div>
+                  <dt>FFprobe</dt>
+                  <dd>
+                    {status?.ffprobeAvailable ? "Available" : "Not found"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </>
+        )}
+        {category === "library" && (
+          <>
+            <p className="eyebrow">MEDIA</p>
+            <h1>Libraries</h1>
+            {libraryMessage && (
+              <div className="settings-card library-scan-status">
+                <RefreshCw className={libraryBusy ? "spin" : ""} size={18} />
+                <div>
+                  <strong>
+                    {libraryBusy
+                      ? "Library scan in progress"
+                      : "Library updated"}
+                  </strong>
+                  <p>{libraryMessage}</p>
+                  {libraryBusy && scanProgress && (
+                    <>
+                      <p className="scan-counts">
+                        {scanProgress.phase === "discovering"
+                          ? `${scanProgress.discovered} media files discovered`
+                          : `${scanProgress.inspected} of ${scanProgress.discovered} media files inspected`}
+                      </p>
+                      {scanProgress.currentPath && (
+                        <code title={scanProgress.currentPath}>
+                          {scanProgress.currentPath}
+                        </code>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {roots("movie", moviePaths, Film)}
+            {roots("tv", tvPaths, Tv)}
+            <button disabled={libraryBusy} onClick={() => void rescan()}>
+              <RefreshCw className={libraryBusy ? "spin" : ""} size={17} />
+              {libraryBusy ? "Scanning libraries…" : "Rescan libraries"}
+            </button>
+          </>
+        )}
+        {category === "backup" && (
+          <>
+            <p className="eyebrow">DATA SAFETY</p>
+            <h1>Backup & Restore</h1>
+            {backupMessage && (
+              <div className="settings-success">{backupMessage}</div>
+            )}
+            <div className="settings-card backup-card">
+              <h3>Create encrypted backup</h3>
+              <p>
+                Includes settings, profiles, watch progress, playlists, matches,
+                requests, provider state, Onyx-managed subtitles, and saved
+                provider credentials. Media files and regenerable artwork are
+                excluded.
+              </p>
+              <label className="setup-field">
+                <span>Backup password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={backupPassword}
+                  onChange={(e) => setBackupPassword(e.target.value)}
+                  placeholder="At least 10 characters"
+                />
+              </label>
+              <button
+                className="primary"
+                disabled={backupBusy || backupPassword.length < 10}
+                onClick={() => void makeBackup()}
+              >
+                <Save size={16} />
+                Create backup file
+              </button>
+            </div>
+            <div className="settings-card backup-card">
+              <h3>Restore backup</h3>
+              <p>
+                Choose a backup, verify it, then adjust any media roots whose
+                drive or parent folder changed.
+              </p>
+              <div className="backup-actions">
+                <button disabled={backupBusy} onClick={() => void openBackup()}>
+                  <FolderOpen size={16} />
+                  Choose backup
+                </button>
+                {backupPath && <code title={backupPath}>{backupPath}</code>}
+                <button
+                  disabled={
+                    backupBusy || !backupPath || backupPassword.length < 10
+                  }
+                  onClick={() => void inspectBackup()}
+                >
+                  <RefreshCw size={16} />
+                  Verify & preview
+                </button>
+              </div>
+              {backupPreview && (
+                <div className="backup-preview">
+                  <p>
+                    <strong>{backupPreview.mediaItems}</strong> media records ·{" "}
+                    <strong>{backupPreview.users}</strong> users · created{" "}
+                    {new Date(backupPreview.createdAt * 1000).toLocaleString()}
+                  </p>
+                  <p>
+                    Credentials:{" "}
+                    {[
+                      backupPreview.includesTmdb && "TMDB",
+                      backupPreview.includesSubtitles && "OpenSubtitles",
+                      backupPreview.includesIbroadcast && "iBroadcast",
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "none"}
+                  </p>
+                  <h4>Media folder mapping</h4>
+                  {rootMappings.map((mapping, index) => (
+                    <label
+                      className="root-mapping"
+                      key={`${mapping.from}-${index}`}
+                    >
+                      <span title={mapping.from}>{mapping.from}</span>
+                      <span>→</span>
+                      <input
+                        value={mapping.to}
+                        onChange={(e) =>
+                          setRootMappings((current) =>
+                            current.map((item, i) =>
+                              i === index
+                                ? { ...item, to: e.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                  <label className="setup-field">
+                    <span>Restore mode</span>
+                    <select
+                      value={restoreMode}
+                      onChange={(e) =>
+                        setRestoreMode(e.target.value as "merge" | "replace")
+                      }
+                    >
+                      <option value="replace">Replace current Onyx data</option>
+                      <option value="merge">
+                        Merge with current Onyx data
+                      </option>
+                    </select>
+                  </label>
+                  <p className="muted">
+                    A password-protected safety backup of the current
+                    installation is created beside the selected backup before
+                    any data changes.
+                  </p>
+                  <button
+                    className="primary"
+                    disabled={backupBusy}
+                    onClick={() => void runRestore()}
+                  >
+                    <ArchiveRestore size={16} />
+                    Restore backup
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {category === "health" && (
+          <LibraryHealthSettings onChanged={onChanged} />
+        )}
+        {category === "metadata" && (
+          <>
+            <p className="eyebrow">IDENTIFICATION</p>
+            <h1>Metadata</h1>
+            {metadataMessage && (
+              <div className="settings-success">{metadataMessage}</div>
+            )}
+            <div className="settings-card metadata-provider-card">
+              <div className="provider-title">
+                <div>
+                  <strong>TMDB</strong>
+                  <span className="primary-provider">Primary</span>
+                </div>
+                <span
+                  className={
+                    tmdb?.configured ? "provider-connected" : "provider-offline"
+                  }
+                >
+                  {tmdb?.configured ? "Configured" : "Not configured"}
+                </span>
+              </div>
+              <label className="setup-field">
+                <span>API Read Access Token</span>
+                <input
+                  type="password"
+                  value={tmdbToken}
+                  onChange={(e) => setTmdbTokenDraft(e.target.value)}
+                  placeholder={
+                    tmdb?.configured
+                      ? "•••••••• configured — enter a new token to replace"
+                      : "Paste TMDB API Read Access Token"
+                  }
+                />
+              </label>
+              <div className="metadata-actions">
+                <button
+                  className="primary"
+                  disabled={metadataBusy || !tmdbToken.trim()}
+                  onClick={() => void saveTmdb()}
+                >
+                  <Save size={16} />
+                  Save & test
+                </button>
+                {tmdb?.configured && (
+                  <>
+                    <button
+                      disabled={metadataBusy}
+                      onClick={async () => {
+                        setMetadataBusy(true);
+                        try {
+                          await testTmdb();
+                          setMetadataMessage("TMDB connection is working.");
+                        } catch (c) {
+                          setError(String(c));
+                        } finally {
+                          setMetadataBusy(false);
+                        }
+                      }}
+                    >
+                      Test connection
+                    </button>
+                    <button
+                      disabled={metadataBusy}
+                      onClick={() => void runAutoMatch()}
+                    >
+                      <RefreshCw size={16} />
+                      Match unmatched media
+                    </button>
+                    <button
+                      className="danger-text"
+                      onClick={async () => {
+                        await clearTmdbToken();
+                        setMetadataMessage(
+                          "TMDB disconnected. Existing cached metadata remains available.",
+                        );
+                        await refresh();
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="metadata-attribution">{tmdb?.attribution}</p>
+            </div>
+            <div className="settings-card metadata-provider-card disabled-provider">
+              <div className="provider-title">
+                <div>
+                  <strong>TheTVDB</strong>
+                  <span>Optional secondary provider</span>
+                </div>
+                <span className="provider-offline">Not enabled</span>
+              </div>
+              <p className="metadata-attribution">{tvdb?.attribution}</p>
+            </div>
+          </>
+        )}
+        {category === "users" && (
+          <>
+            <p className="eyebrow">PROFILES</p>
+            <h1>Users</h1>
+            <div className="settings-user-list">
+              {users.map((user) => (
+                <div
+                  className="settings-card settings-user-profile"
+                  key={user.id}
+                >
+                  <div className="settings-user-row">
+                    <AvatarBadge avatar={avatars[user.id]} name={user.name} />
+                    <label>
+                      <span>
+                        {user.isAdmin
+                          ? "Administrator profile"
+                          : "User profile"}
+                      </span>
+                      <input
+                        value={nameDrafts[user.id] ?? user.name}
+                        onChange={(e) =>
+                          setNameDrafts((current) => ({
+                            ...current,
+                            [user.id]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => void saveUserName(user)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveUserName(user);
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="icon-action"
+                      aria-label={`Save ${user.name}`}
+                      onClick={() => void saveUserName(user)}
+                    >
+                      <Save size={16} />
+                    </button>
+                    <button onClick={() => void chooseUser(user.id)}>
+                      {user.id === active ? "Current" : "Switch"}
+                    </button>
+                    {!user.isAdmin && (
+                      <button
+                        className="danger-text"
+                        onClick={() => void removeUser(user)}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                  <UserAvatarPicker
+                    userId={user.id}
+                    name={nameDrafts[user.id] ?? user.name}
+                    avatar={avatars[user.id]}
+                    onChanged={(avatar) => {
+                      setAvatars((current) => ({
+                        ...current,
+                        [user.id]: avatar,
+                      }));
+                      onChanged?.();
+                    }}
+                  />
+                </div>
+              ))}
+              {newUserOpen ? (
+                <div className="settings-card settings-user-row">
+                  <UserRound />
+                  <label>
+                    <span>New user</span>
+                    <input
+                      autoFocus
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      placeholder="Name"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void addUser();
+                        if (e.key === "Escape") {
+                          setNewUserOpen(false);
+                          setNewUserName("");
+                        }
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="icon-action"
+                    aria-label="Add user"
+                    onClick={() => void addUser()}
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    className="icon-action"
+                    aria-label="Cancel"
+                    onClick={() => {
+                      setNewUserOpen(false);
+                      setNewUserName("");
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setNewUserOpen(true)}>
+                  <Plus size={17} />
+                  Add user
+                </button>
+              )}
+            </div>
+          </>
+        )}
+        {category === "requests" && activeProfile && (
+          <WishlistView user={activeProfile} />
+        )}
+        {category === "appearance" && (
+          <>
+            <p className="eyebrow">PROFILE</p>
+            <h1>Appearance</h1>
+            <div className="theme-choice-grid">
+              {themes.map((value) => (
+                <button
+                  key={value}
+                  className={`theme-choice theme-${value} ${theme === value ? "active" : ""}`}
+                  onClick={() => void chooseTheme(value)}
+                >
+                  <span />
+                  <strong>{themeLabels[value]}</strong>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {category === "remote" && (
+          <>
+            <p className="eyebrow">NETWORK</p>
+            <h1>Remote access</h1>
+            <div className="settings-card">
+              <h3>Browser access</h3>
+              <p>LAN address: {status?.localUrl}</p>
+              <button onClick={() => void password()}>
+                {status?.accessPasswordSet
+                  ? "Remove access password"
+                  : "Set access password"}
+              </button>
+              <p className="muted">
+                Do not expose port 8765 directly to the internet. Use Tailscale
+                or an HTTPS reverse proxy.
+              </p>
+            </div>
+          </>
+        )}
+        {category === "music" && (
+          <>
+            <p className="eyebrow">PROVIDER</p>
+            <h1>iBroadcast</h1>
+            <IbroadcastLogoKit />
+            <label className="setup-field">
+              <span>Onyx iBroadcast client ID</span>
+              <input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Client ID"
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    await setIbroadcastClientId(clientId);
+                    await refresh();
+                  } catch (c) {
+                    setError(String(c));
+                  }
+                }}
+              >
+                Save
+              </button>
+            </label>
+            <IbroadcastConnect onConnected={() => void refresh()} />
+          </>
+        )}
+        {category === "subtitles" && <SubtitleSettings />}
+        {category === "live" && <LiveChannelsSettings />}
+        {category === "cache" && (
+          <>
+            <p className="eyebrow">STORAGE</p>
+            <h1>Cache</h1>
+            <div className="settings-card">
+              <h3>Artwork</h3>
+              <p>
+                {Math.round((status?.artworkCacheBytes ?? 0) / 1024 / 1024)} MB
+                used
+              </p>
+              <button
+                onClick={async () => {
+                  await clearThumbnailCache();
+                  await refresh();
+                }}
+              >
+                Clear generated episode thumbnails
+              </button>
+            </div>
+          </>
+        )}
+        {category === "activity" && (
+          <>
+            <p className="eyebrow">DIAGNOSTICS</p>
+            <h1>Activity Console</h1>
+            <div className="activity-toolbar">
+              <span>{activity.length} recent events</span>
+              <div>
+                <button onClick={() => void refreshActivity()}>
+                  <RefreshCw size={16} />
+                  Refresh
+                </button>
+                <button
+                  onClick={async () => {
+                    await clearActivity();
+                    await refreshActivity();
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div className="activity-console">
+              {activity.length === 0 ? (
+                <div className="activity-empty">No activity recorded yet.</div>
+              ) : (
+                activity.map((entry, index) => (
+                  <div
+                    className="activity-row"
+                    key={`${entry.timestamp}-${index}`}
+                  >
+                    <span className="activity-time">
+                      {new Date(entry.timestamp * 1000).toLocaleTimeString()}
+                    </span>
+                    <span className={`activity-level ${entry.level}`}>
+                      {entry.level}
+                    </span>
+                    <span className="activity-category">{entry.category}</span>
+                    <span className="activity-message">{entry.message}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
 }

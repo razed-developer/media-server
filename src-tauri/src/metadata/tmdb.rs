@@ -11,6 +11,8 @@ const KEYRING_USER: &str = "tmdb-read-token";
 
 fn token_entry() -> Result<Entry, String> { Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| format!("Could not open the operating-system credential store for TMDB: {e}")) }
 fn read_token() -> Result<String, String> { token_entry()?.get_password().map_err(|e| format!("TMDB credential could not be read from the operating-system credential store: {e}. Re-save the token in Settings → Metadata.")) }
+pub(crate) fn export_token() -> Option<String> { read_token().ok() }
+pub(crate) fn import_token(token: &str) -> Result<(), String> { save_token(token) }
 pub fn configured() -> bool { read_token().is_ok() }
 pub fn save_token(token: &str) -> Result<(), String> {
     let token = token.trim(); if token.is_empty() { return Err("TMDB read access token cannot be empty".into()); }

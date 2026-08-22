@@ -124,6 +124,8 @@ fn load_token(user_id: &str) -> Result<Option<TokenRecord>, String> {
         Err(e) => Err(format!("Could not read iBroadcast credentials: {e}")),
     }
 }
+pub(crate) fn export_token(user_id:&str)->Option<String>{keyring_entry(user_id).ok()?.get_password().ok()}
+pub(crate) fn import_token(user_id:&str,raw:&str)->Result<(),String>{let _:TokenRecord=serde_json::from_str(raw).map_err(|_|"Invalid iBroadcast credentials in backup".to_string())?;keyring_entry(user_id)?.set_password(raw).map_err(|e|format!("Could not restore iBroadcast credentials: {e}"))}
 
 fn delete_token(user_id: &str) -> Result<(), String> {
     match keyring_entry(user_id)?.delete_credential() {

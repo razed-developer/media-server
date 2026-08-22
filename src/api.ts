@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AnalyticsSummary, AuthStatus, GuideChannel, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, LiveChannel, LiveChannelInput, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, ServerStatus, SetupStatus, ScanProgress, ThemeName, UserPreferences, UserProfile } from './types';
+import type { AnalyticsSummary, AuthStatus, BackupPreview, GuideChannel, IbConnectionStatus, IbDeviceCode, IbDevicePoll, IbLibrary, LiveChannel, LiveChannelInput, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, RestoreReport, RootMapping, ServerStatus, SetupStatus, ScanProgress, ThemeName, UserPreferences, UserProfile } from './types';
 export interface IdentityInput { title?:string; year?:number; kind?:'movie'|'episode'; showTitle?:string; season?:number; episode?:number; }
 export const isTauriDesktop=()=>Boolean((window as Window&{__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__);
 export const serverBaseUrl=()=>isTauriDesktop()?'http://127.0.0.1:8765':'';
@@ -44,6 +44,11 @@ export const liveChannelStreamUrl=(mediaId:string,offsetSeconds:number)=>`${serv
 export async function getLibraryScanProgress():Promise<ScanProgress>{if(!isTauriDesktop())return{active:false,phase:'idle',discovered:0,inspected:0,startedAt:0};return invoke<ScanProgress>('library_scan_progress');}
 export async function rescanLibrary():Promise<void>{if(!isTauriDesktop())throw new Error('Library rescans are managed from the desktop server app.');await invoke('scan_library');}
 export async function chooseLibraryPath():Promise<string|null>{if(!isTauriDesktop())return null;const{open}=await import('@tauri-apps/plugin-dialog');const selected=await open({directory:true,multiple:false});return typeof selected==='string'?selected:null;}
+export async function chooseBackupDestination():Promise<string|null>{if(!isTauriDesktop())return null;const{save}=await import('@tauri-apps/plugin-dialog');return save({defaultPath:`Onyx-backup-${new Date().toISOString().slice(0,10)}.onyx-backup`,filters:[{name:'Onyx Backup',extensions:['onyx-backup']}]});}
+export async function chooseBackupFile():Promise<string|null>{if(!isTauriDesktop())return null;const{open}=await import('@tauri-apps/plugin-dialog');const selected=await open({multiple:false,directory:false,filters:[{name:'Onyx Backup',extensions:['onyx-backup']}]});return typeof selected==='string'?selected:null;}
+export async function createBackup(path:string,password:string):Promise<BackupPreview>{return invoke<BackupPreview>('backup_create',{path,password});}
+export async function previewBackup(path:string,password:string):Promise<BackupPreview>{return invoke<BackupPreview>('backup_preview',{path,password});}
+export async function restoreBackup(path:string,password:string,mode:'merge'|'replace',mappings:RootMapping[]):Promise<RestoreReport>{return invoke<RestoreReport>('backup_restore',{path,password,mode,mappings});}
 export async function setLibraryPath(path:string):Promise<void>{if(!isTauriDesktop())throw new Error('Library folders are managed from the desktop server app.');await invoke('set_library_path',{path});}
 export async function setMoviePath(path:string):Promise<void>{if(!isTauriDesktop())throw new Error('Movie folders are managed from the desktop server app.');await invoke('set_movie_path',{path});}
 export async function setTvPath(path:string):Promise<void>{if(!isTauriDesktop())throw new Error('TV folders are managed from the desktop server app.');await invoke('set_tv_path',{path});}

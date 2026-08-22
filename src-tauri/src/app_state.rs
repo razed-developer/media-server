@@ -2,7 +2,7 @@ use crate::models::MediaItem;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}, sync::{Arc, RwLock}};
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)] pub library_path: Option<String>,
     // Legacy single-root fields are retained for backward compatibility.

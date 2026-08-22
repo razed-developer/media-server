@@ -11,6 +11,9 @@ export interface AnalyticsSummary{totalSeconds:number;movieSeconds:number;tvSeco
 export interface ActivityEntry{timestamp:number;level:'info'|'warning'|'error'|string;category:string;message:string;}
 export interface ScanProgress{active:boolean;phase:string;discovered:number;inspected:number;currentPath?:string;startedAt:number;finishedAt?:number;error?:string;}
 export interface ServerStatus{running:boolean;localUrl:string;libraryPath?:string;moviePath?:string;tvPath?:string;moviePaths?:string[];tvPaths?:string[];itemCount:number;ffprobeAvailable:boolean;ffmpegAvailable:boolean;accessPasswordSet?:boolean;artworkCacheBytes?:number;setupComplete?:boolean;ibroadcastClientId?:string;scanProgress?:ScanProgress;}
+export interface BackupPreview{createdAt:number;moviePaths:string[];tvPaths:string[];mediaItems:number;users:number;includesTmdb:boolean;includesSubtitles:boolean;includesIbroadcast:boolean;}
+export interface RootMapping{from:string;to:string;}
+export interface RestoreReport{mediaItems:number;users:number;remappedRoots:number;safetyBackupPath:string;}
 export interface AuthStatus{required:boolean;authenticated:boolean;}
 export interface SetupStatus{complete:boolean;moviePath?:string;tvPath?:string;moviePaths?:string[];tvPaths?:string[];ibroadcastClientId?:string;users:UserProfile[];}
 export interface MetadataProviderStatus{provider:string;configured:boolean;enabled:boolean;primary:boolean;attribution:string;}

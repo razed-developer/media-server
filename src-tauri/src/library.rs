@@ -18,6 +18,11 @@ pub fn scan(
 ) -> Result<Vec<MediaItem>, String> {
     let item_overrides = database::identity_overrides(database_path).unwrap_or_default();
     let show_overrides = database::show_overrides(database_path).unwrap_or_default();
+    // Reuse IDs for paths already known to the database. This preserves watch
+    // history, playlists, matches, and Onyx-managed subtitles after a restored
+    // library root has been remapped to a new drive or parent directory.
+    let existing_ids: std::collections::HashMap<String, String> = database::load_library(database_path)
+        .unwrap_or_default().into_iter().map(|item| (item.path, item.id)).collect();
     let mut video_paths = Vec::new();
 
     progress("discovering", 0, 0, Some(root));
@@ -36,7 +41,8 @@ pub fn scan(
         progress("inspecting", discovered, index, Some(path));
         let extension = path.extension().and_then(|value| value.to_str()).unwrap_or_default().to_lowercase();
         if !VIDEO_EXTENSIONS.contains(&extension.as_str()) { continue; }
-        let id = make_id(path);
+        let path_text = path.to_string_lossy().to_string();
+        let id = existing_ids.get(&path_text).cloned().unwrap_or_else(|| make_id(path));
         let parsed = match kind_hint {
             Some("movie") => naming::parse_movie(path),
             Some("episode") => naming::parse_tv(path),
@@ -66,7 +72,7 @@ pub fn scan(
             season: parsed.season,
             episode: parsed.episode,
             episode_end: parsed.episode_end,
-            path: path.to_string_lossy().to_string(),
+            path: path_text,
             stream_url: format!("/play/{id}"),
             poster_url: Some(format!("/art/{id}/poster")),
             backdrop_url: Some(format!("/art/{id}/backdrop")),

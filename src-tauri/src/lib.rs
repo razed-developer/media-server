@@ -2,6 +2,7 @@ mod activity;
 mod app_state;
 mod artwork;
 mod assets;
+mod backup;
 mod commands;
 mod child_process;
 mod database;
@@ -75,6 +76,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_external_url,
+            backup::backup_create, backup::backup_preview, backup::backup_restore,
             activity::activity_entries, activity::clear_activity, activity::record_client_activity, assets::save_ibroadcast_logo,
             household_feed::household_feed,
             commands::setup_status, commands::complete_setup, commands::set_ibroadcast_client_id,

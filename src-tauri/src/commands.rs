@@ -110,7 +110,7 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
         *progress = ScanProgress { active: true, phase: "starting".into(), started_at, ..ScanProgress::default() };
     }
 
-    let result = (|| {
+    let result: Result<Vec<MediaItem>, String> = (|| {
         let (legacy_path, movie_paths, tv_paths) = {
             let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
             (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths())
@@ -215,7 +215,6 @@ pub fn setup_status(state: TauriState<'_, Shared>) -> Result<SetupStatus, String
         movie_paths,
         tv_paths,
         ibroadcast_client_id: settings.ibroadcast_client_id.clone(),
-        scan_progress: state.scan_progress.read().map_err(|_| "Scan progress lock poisoned")?.clone(),
         users: database::list_users(&state.database_path)?,
     })
 }
@@ -477,5 +476,6 @@ pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, Stri
         artwork_cache_bytes: artwork::cache_size(&state.artwork_path),
         setup_complete: settings.setup_complete,
         ibroadcast_client_id: settings.ibroadcast_client_id.clone(),
+        scan_progress: state.scan_progress.read().map_err(|_| "Scan progress lock poisoned")?.clone(),
     })
 }

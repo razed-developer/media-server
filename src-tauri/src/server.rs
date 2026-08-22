@@ -40,6 +40,7 @@ struct ProgressPayload { seconds: u64, watched_seconds: Option<u64> }
 #[derive(Deserialize)] #[serde(rename_all = "camelCase")] struct PlaylistItemPayload { media_id: String }
 #[derive(Deserialize)] #[serde(rename_all = "camelCase")] struct HiddenPayload { target_type: String, target_key: String, hidden: bool }
 #[derive(Deserialize)] struct ThemePayload { theme: String }
+#[derive(Deserialize)] struct ContinueWatchingPayload { split: bool }
 #[derive(Deserialize)] #[serde(rename_all = "camelCase")] struct DevicePollPayload { device_code: String }
 
 fn now_seconds() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) }
@@ -97,6 +98,9 @@ async fn api_preferences(State(state): State<Shared>, headers: HeaderMap) -> Res
 }
 async fn api_set_theme(State(state): State<Shared>, headers: HeaderMap, Json(payload): Json<ThemePayload>) -> Result<Json<UserPreferences>, StatusCode> {
     database::set_theme(&state.database_path, &request_user(&state, &headers), &payload.theme).map(Json).map_err(|_| StatusCode::BAD_REQUEST)
+}
+async fn api_set_continue_watching(State(state): State<Shared>, headers: HeaderMap, Json(payload): Json<ContinueWatchingPayload>) -> Result<Json<UserPreferences>, StatusCode> {
+    database::set_split_continue_watching(&state.database_path, &request_user(&state, &headers), payload.split).map(Json).map_err(|_| StatusCode::BAD_REQUEST)
 }
 async fn api_analytics(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<EnrichedAnalyticsSummary>, StatusCode> {
     let user = request_user(&state, &headers);
@@ -206,7 +210,7 @@ async fn dev_browser_redirect() -> Html<&'static str> { Html(r#"<!doctype html><
 pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
     let protected = Router::new()
         .route("/api/users", get(api_users)).route("/api/library", get(api_library))
-        .route("/api/preferences", get(api_preferences)).route("/api/preferences/theme", post(api_set_theme))
+        .route("/api/preferences", get(api_preferences)).route("/api/preferences/theme", post(api_set_theme)).route("/api/preferences/continue-watching", post(api_set_continue_watching))
         .route("/api/analytics", get(api_analytics)).route("/api/progress/{id}", post(api_save_progress))
         .route("/api/progress/reset", post(api_reset_progress)).route("/api/hidden", post(api_set_hidden))
         .route("/api/playlists", get(api_playlists).post(api_create_playlist)).route("/api/playlists/{id}/add", post(api_add_playlist))

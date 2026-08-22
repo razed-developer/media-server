@@ -57,6 +57,7 @@ export interface UserProfile {
 }
 export interface UserPreferences {
   theme: ThemeName;
+  splitContinueWatching: boolean;
 }
 export interface Playlist {
   id: string;

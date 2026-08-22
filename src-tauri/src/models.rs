@@ -55,7 +55,7 @@ pub struct UserProfile { pub id: String, pub name: String, pub is_admin: bool }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UserPreferences { pub theme: String }
+pub struct UserPreferences { pub theme: String, pub split_continue_watching: bool }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

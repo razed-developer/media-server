@@ -87,7 +87,7 @@ pub fn run() {
             commands::set_access_password, commands::clear_access_password,
             commands::scan_library, commands::library_scan_progress, commands::list_users, commands::create_user, commands::rename_user, commands::delete_user,
             library_health::library_health, library_health::library_health_repair_all, library_health::library_health_repair_item,
-            commands::get_user_preferences, commands::set_user_theme, commands::user_analytics,
+            commands::get_user_preferences, commands::set_user_theme, commands::set_split_continue_watching, commands::user_analytics,
             commands::list_media, commands::save_progress, commands::reset_watch_status, commands::set_hidden,
             commands::server_status, commands::clear_thumbnail_cache, commands::identify_item,
             commands::identify_show, commands::reset_identification, commands::list_playlists,

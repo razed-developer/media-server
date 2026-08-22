@@ -169,6 +169,23 @@ export async function setUserTheme(theme: ThemeName): Promise<UserPreferences> {
     "Could not save theme",
   );
 }
+export async function setSplitContinueWatching(
+  split: boolean,
+): Promise<UserPreferences> {
+  if (isTauriDesktop())
+    return invoke<UserPreferences>("set_split_continue_watching", {
+      userId: activeUserId,
+      split,
+    });
+  return json(
+    await browserFetch(`${serverBaseUrl()}/api/preferences/continue-watching`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ split }),
+    }),
+    "Could not save Continue Watching preference",
+  );
+}
 export async function getAnalytics(): Promise<AnalyticsSummary> {
   if (isTauriDesktop())
     return invoke<AnalyticsSummary>("user_analytics", { userId: activeUserId });

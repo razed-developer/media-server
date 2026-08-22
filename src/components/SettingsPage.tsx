@@ -49,6 +49,7 @@ import {
   setAccessPassword,
   setActiveUserId,
   setIbroadcastClientId,
+  setSplitContinueWatching,
   setTmdbToken,
   setUserTheme,
   testTmdb,
@@ -117,6 +118,8 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [avatars, setAvatars] = useState<Record<string, UserAvatar>>({});
   const [active, setActive] = useState(getActiveUserId());
   const [theme, setTheme] = useState<ThemeName>("onyx");
+  const [splitContinueWatching, setSplitContinueWatchingState] =
+    useState(false);
   const [clientId, setClientId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [newUserOpen, setNewUserOpen] = useState(false);
@@ -162,6 +165,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
       syncUsers(u);
       syncAvatars(a);
       setTheme(p.theme);
+      setSplitContinueWatchingState(p.splitContinueWatching);
       setClientId(s.ibroadcastClientId ?? "");
       setProviders(m);
       setError(null);
@@ -643,6 +647,37 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
                 </div>
               </div>
             )}
+            <div className="settings-card">
+              <h3>Continue Watching</h3>
+              <p>
+                Keep movies and TV together with matching poster-shaped cards,
+                or split them so episodes can use their wider thumbnails.
+              </p>
+              <label className="setup-field">
+                <span>Home screen layout</span>
+                <select
+                  value={splitContinueWatching ? "split" : "combined"}
+                  onChange={async (event) => {
+                    const split = event.target.value === "split";
+                    setSplitContinueWatchingState(split);
+                    try {
+                      await setSplitContinueWatching(split);
+                      onChanged?.();
+                    } catch (cause) {
+                      setSplitContinueWatchingState(!split);
+                      setError(String(cause));
+                    }
+                  }}
+                >
+                  <option value="combined">
+                    One row — movies and shows use posters
+                  </option>
+                  <option value="split">
+                    Separate movie and TV rows — episodes use thumbnails
+                  </option>
+                </select>
+              </label>
+            </div>
             {roots("movie", moviePaths, Film)}
             {roots("tv", tvPaths, Tv)}
             <button disabled={libraryBusy} onClick={() => void rescan()}>

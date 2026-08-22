@@ -43,7 +43,7 @@ pub struct RepairReport {
 }
 
 fn assess_item(database_path: &Path, item: &MediaItem) -> LibraryHealthItem {
-    let mut issues = Vec::new();
+    let mut issues: Vec<String> = Vec::new();
     if !Path::new(&item.path).is_file() { issues.push("Source file is missing".into()); }
     if item.provider_id.is_none() { issues.push("Not matched to TMDB".into()); }
     if item.kind == "movie" && item.year.is_none() { issues.push("Release year is missing".into()); }
@@ -128,7 +128,7 @@ pub async fn library_health_repair_all(state: State<'_, Shared>) -> Result<Repai
     let mut attempted = 0; let mut refreshed = 0; let mut failures = Vec::new();
     for (id, title) in candidates {
         let target = match repair_target_id(&state, &id) {
-            Ok(target) if seen.insert(target) => target,
+            Ok(target) if seen.insert(target.clone()) => target,
             Ok(_) => continue,
             Err(error) => { attempted += 1; failures.push(format!("{title}: {error}")); continue; }
         };

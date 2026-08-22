@@ -316,6 +316,8 @@ pub fn get_user_preferences(user_id: String, state: TauriState<'_, Shared>) -> R
 #[tauri::command]
 pub fn set_user_theme(user_id: String, theme: String, state: TauriState<'_, Shared>) -> Result<UserPreferences, String> { ensure_user(&state, &user_id)?; database::set_theme(&state.database_path, &user_id, &theme) }
 #[tauri::command]
+pub fn set_split_continue_watching(user_id: String, split: bool, state: TauriState<'_, Shared>) -> Result<UserPreferences, String> { ensure_user(&state, &user_id)?; database::set_split_continue_watching(&state.database_path, &user_id, split) }
+#[tauri::command]
 pub fn user_analytics(user_id: String, state: TauriState<'_, Shared>) -> Result<EnrichedAnalyticsSummary, String> {
     ensure_user(&state, &user_id)?;
     let core = database::analytics(&state.database_path, &user_id)?;

@@ -108,6 +108,13 @@ export interface ServerStatus {
   ibroadcastClientId?: string;
   scanProgress?: ScanProgress;
 }
+export interface FunnelStatus {
+  available: boolean;
+  enabled: boolean;
+  url?: string;
+  passwordSet: boolean;
+  detail?: string;
+}
 export interface BackupPreview {
   createdAt: number;
   moviePaths: string[];

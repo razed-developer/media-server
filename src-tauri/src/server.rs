@@ -6,7 +6,7 @@ use crate::{
 use argon2::{password_hash::{PasswordHash, PasswordVerifier}, Argon2};
 use axum::{
     body::Body,
-    extract::{ConnectInfo, Path as AxumPath, Request, State},
+    extract::{Path as AxumPath, Request, State},
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
@@ -60,23 +60,27 @@ fn request_user(state: &crate::AppState, headers: &HeaderMap) -> String {
     let requested = headers.get(USER_HEADER).and_then(|v| v.to_str().ok()).unwrap_or(database::DEFAULT_USER_ID);
     if database::user_exists(&state.database_path, requested) { requested.to_string() } else { database::DEFAULT_USER_ID.to_string() }
 }
-async fn require_auth(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, request: Request, next: Next) -> Response {
-    if peer.ip().is_loopback() || !password_required(&state) || valid_session(&state, request.headers()) { return next.run(request).await; }
+async fn require_funnel_auth(State(state): State<Shared>, request: Request, next: Next) -> Response {
+    if !password_required(&state) || valid_session(&state, request.headers()) { return next.run(request).await; }
     StatusCode::UNAUTHORIZED.into_response()
 }
-async fn auth_status(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap) -> Json<AuthStatus> {
-    let required = password_required(&state) && !peer.ip().is_loopback();
+async fn direct_auth_status() -> Json<AuthStatus> {
+    Json(AuthStatus { required: false, authenticated: true })
+}
+async fn funnel_auth_status(State(state): State<Shared>, headers: HeaderMap) -> Json<AuthStatus> {
+    let required = password_required(&state);
     Json(AuthStatus { required, authenticated: !required || valid_session(&state, &headers) })
 }
-async fn login(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, Json(payload): Json<LoginPayload>) -> Response {
-    if peer.ip().is_loopback() || !password_required(&state) { return StatusCode::NO_CONTENT.into_response(); }
+async fn direct_login() -> StatusCode { StatusCode::NO_CONTENT }
+async fn funnel_login(State(state): State<Shared>, Json(payload): Json<LoginPayload>) -> Response {
+    if !password_required(&state) { return StatusCode::NO_CONTENT.into_response(); }
     let hash = state.settings.read().ok().and_then(|s| s.access_password_hash.clone());
     let Some(hash) = hash else { return StatusCode::NO_CONTENT.into_response(); };
     let Ok(parsed) = PasswordHash::new(&hash) else { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); };
     if Argon2::default().verify_password(payload.password.as_bytes(), &parsed).is_err() { return (StatusCode::UNAUTHORIZED, "Incorrect password").into_response(); }
     let token = Uuid::new_v4().to_string(); let expires = now_seconds() + SESSION_SECONDS;
     if state.sessions.write().map(|mut s| s.insert(token.clone(), expires)).is_err() { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); }
-    Response::builder().status(StatusCode::NO_CONTENT).header(header::SET_COOKIE, format!("{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_SECONDS}")).body(Body::empty()).unwrap()
+    Response::builder().status(StatusCode::NO_CONTENT).header(header::SET_COOKIE, format!("{SESSION_COOKIE}={token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={SESSION_SECONDS}")).body(Body::empty()).unwrap()
 }
 async fn logout(State(state): State<Shared>, headers: HeaderMap) -> Response {
     if let Some(token) = cookie_token(&headers) { if let Ok(mut sessions) = state.sessions.write() { sessions.remove(&token); } }
@@ -207,8 +211,8 @@ pub async fn embedded_subtitle(State(state): State<Shared>, AxumPath((id, stream
 }
 async fn dev_browser_redirect() -> Html<&'static str> { Html(r#"<!doctype html><meta charset=\"utf-8\"><title>Onyx</title><script>location.replace('http://'+location.hostname+':1420'+location.pathname+location.search+location.hash)</script><p>Opening Onyx…</p>"#) }
 
-pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
-    let protected = Router::new()
+fn protected_router() -> Router<Shared> {
+    Router::new()
         .route("/api/users", get(api_users)).route("/api/library", get(api_library))
         .route("/api/preferences", get(api_preferences)).route("/api/preferences/theme", post(api_set_theme)).route("/api/preferences/continue-watching", post(api_set_continue_watching))
         .route("/api/analytics", get(api_analytics)).route("/api/progress/{id}", post(api_save_progress))
@@ -222,14 +226,33 @@ pub async fn start(state: Shared, port: u16, web_root: Option<PathBuf>) {
         .route("/play/{id}", get(play_media)).route("/stream/{id}", get(stream_media)).route("/art/{id}/{kind}", get(artwork_route))
         .route("/subtitle/{id}/embedded/{stream_index}", get(embedded_subtitle)).route("/subtitle/{id}/{filename}", get(subtitle))
         .merge(crate::live_server::router())
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+}
+
+fn finish_router(router: Router<Shared>, state: Shared, web_root: Option<PathBuf>) -> Router {
     let user_header = HeaderName::from_static(USER_HEADER);
     let cors = CorsLayer::new().allow_origin(AllowOrigin::mirror_request()).allow_methods([Method::GET, Method::POST]).allow_headers([header::CONTENT_TYPE, header::RANGE, user_header]).allow_credentials(true);
-    let router = Router::new().route("/api/status", get(api_status)).route("/api/auth/status", get(auth_status)).route("/api/auth/login", post(login)).route("/api/auth/logout", post(logout)).merge(protected).layer(cors).with_state(state);
+    let router = router.layer(cors).with_state(state);
     let router = if let Some(root) = web_root.filter(|p| p.join("index.html").is_file()) { router.fallback_service(ServeDir::new(&root).append_index_html_on_directories(true).not_found_service(ServeFile::new(root.join("index.html")))) } else { router.fallback(dev_browser_redirect) };
+    router
+}
+
+pub async fn start(state: Shared, port: u16, funnel_port: u16, web_root: Option<PathBuf>) {
+    let direct = Router::new().route("/api/status", get(api_status)).route("/api/auth/status", get(direct_auth_status)).route("/api/auth/login", post(direct_login)).route("/api/auth/logout", post(logout)).merge(protected_router());
+    let direct = finish_router(direct, state.clone(), web_root.clone());
+    let funnel_protected = protected_router().route_layer(middleware::from_fn_with_state(state.clone(), require_funnel_auth));
+    let funnel = Router::new().route("/api/status", get(api_status)).route("/api/auth/status", get(funnel_auth_status)).route("/api/auth/login", post(funnel_login)).route("/api/auth/logout", post(logout)).merge(funnel_protected);
+    let funnel = finish_router(funnel, state, web_root);
+
+    let funnel_address = SocketAddr::from(([127, 0, 0, 1], funnel_port));
+    tokio::spawn(async move {
+        match tokio::net::TcpListener::bind(funnel_address).await {
+            Ok(listener) => { println!("Onyx Funnel gateway listening on http://{funnel_address}"); if let Err(error) = axum::serve(listener, funnel.into_make_service_with_connect_info::<SocketAddr>()).await { eprintln!("Funnel gateway stopped: {error}"); } }
+            Err(error) => eprintln!("Could not start Funnel gateway on {funnel_address}: {error}"),
+        }
+    });
     let address = SocketAddr::from(([0, 0, 0, 0], port));
     match tokio::net::TcpListener::bind(address).await {
-        Ok(listener) => { println!("Onyx browser server listening on http://0.0.0.0:{port}"); if let Err(error) = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>()).await { eprintln!("Media server stopped: {error}"); } }
+        Ok(listener) => { println!("Onyx browser server listening on http://0.0.0.0:{port}"); if let Err(error) = axum::serve(listener, direct.into_make_service_with_connect_info::<SocketAddr>()).await { eprintln!("Media server stopped: {error}"); } }
         Err(error) => eprintln!("Could not start media server on {address}: {error}"),
     }
 }

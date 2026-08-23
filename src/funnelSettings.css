@@ -1,0 +1,38 @@
+.funnel-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.funnel-settings-heading > div {
+  min-width: 0;
+}
+
+.funnel-settings-heading p {
+  max-width: 640px;
+  margin: 5px 0 0;
+  line-height: 1.45;
+}
+
+.funnel-toggle {
+  flex: 0 0 auto;
+  min-width: 92px;
+}
+
+.funnel-toggle.active {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.funnel-url code,
+.settings-card code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .funnel-settings-heading {
+    flex-direction: column;
+  }
+}

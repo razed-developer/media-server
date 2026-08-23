@@ -1,11 +1,11 @@
 use crate::{
     app_state::{persist_settings, ScanProgress}, artwork, database, ibroadcast, library, metadata, metadata_view,
     models::{EnrichedAnalyticsSummary, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, UserPreferences, UserProfile},
-    Shared, PORT,
+    Shared, FUNNEL_GATEWAY_PORT, PORT,
 };
 use argon2::{password_hash::{PasswordHasher, SaltString}, Argon2};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, net::UdpSocket, path::{Path, PathBuf}};
+use std::{collections::HashSet, net::UdpSocket, path::{Path, PathBuf}, process::Command};
 use tauri::State as TauriState;
 use uuid::Uuid;
 
@@ -27,6 +27,52 @@ pub struct ServerStatus {
     setup_complete: bool,
     ibroadcast_client_id: Option<String>,
     scan_progress: ScanProgress,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FunnelStatus {
+    available: bool,
+    enabled: bool,
+    url: Option<String>,
+    password_set: bool,
+    detail: Option<String>,
+}
+
+fn tailscale_command() -> Command { crate::child_process::command("tailscale") }
+
+fn read_funnel_status(password_set: bool) -> FunnelStatus {
+    let output = tailscale_command().args(["funnel", "status"]).output();
+    let Ok(output) = output else { return FunnelStatus { available: false, enabled: false, url: None, password_set, detail: Some("Tailscale CLI was not found on this computer.".into()) }; };
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let url = regex::Regex::new(r"https://[^\s/]+\.ts\.net").ok().and_then(|pattern| pattern.find(&stdout).map(|value| value.as_str().to_string()));
+    let target = format!("127.0.0.1:{FUNNEL_GATEWAY_PORT}");
+    let enabled = output.status.success() && url.is_some() && stdout.contains(&target);
+    FunnelStatus { available: true, enabled, url: if enabled { url } else { None }, password_set, detail: if output.status.success() || stderr.is_empty() { None } else { Some(stderr) } }
+}
+
+#[tauri::command]
+pub fn funnel_status(state: TauriState<'_, Shared>) -> Result<FunnelStatus, String> {
+    let password_set = state.settings.read().map_err(|_| "Settings lock poisoned")?.access_password_hash.is_some();
+    Ok(read_funnel_status(password_set))
+}
+
+#[tauri::command]
+pub fn set_funnel_enabled(enabled: bool, state: TauriState<'_, Shared>) -> Result<FunnelStatus, String> {
+    let password_set = state.settings.read().map_err(|_| "Settings lock poisoned")?.access_password_hash.is_some();
+    if enabled && !password_set { return Err("Set a Funnel password before turning on public access.".into()); }
+    let output = if enabled {
+        tailscale_command().args(["funnel", "--bg", &format!("http://127.0.0.1:{FUNNEL_GATEWAY_PORT}")]).output()
+    } else {
+        tailscale_command().args(["funnel", "--https=443", "off"]).output()
+    }.map_err(|error| format!("Could not run Tailscale: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(if stderr.is_empty() { stdout } else { stderr });
+    }
+    Ok(read_funnel_status(password_set))
 }
 
 #[derive(Serialize)]
@@ -291,6 +337,7 @@ pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> R
 
 #[tauri::command]
 pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String> {
+    if read_funnel_status(true).enabled { return Err("Turn off Tailscale Funnel before removing its password.".into()); }
     state.settings.write().map_err(|_| "Settings lock poisoned")?.access_password_hash = None;
     state.sessions.write().map_err(|_| "Session lock poisoned")?.clear();
     persist_settings(&state)

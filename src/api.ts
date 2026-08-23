@@ -4,6 +4,7 @@ import type {
   AuthStatus,
   BackupPreview,
   GuideChannel,
+  FunnelStatus,
   IbConnectionStatus,
   IbDeviceCode,
   IbDevicePoll,
@@ -517,6 +518,16 @@ export async function clearAccessPassword(): Promise<void> {
       "Access passwords are managed from the desktop server app.",
     );
   await invoke("clear_access_password");
+}
+export async function getFunnelStatus(): Promise<FunnelStatus> {
+  if (!isTauriDesktop())
+    throw new Error("Funnel is managed from the desktop server app.");
+  return invoke<FunnelStatus>("funnel_status");
+}
+export async function setFunnelEnabled(enabled: boolean): Promise<FunnelStatus> {
+  if (!isTauriDesktop())
+    throw new Error("Funnel is managed from the desktop server app.");
+  return invoke<FunnelStatus>("set_funnel_enabled", { enabled });
 }
 export async function clearThumbnailCache(): Promise<void> {
   if (!isTauriDesktop())

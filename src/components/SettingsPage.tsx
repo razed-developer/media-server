@@ -39,6 +39,7 @@ import {
   getActiveUserId,
   getLibraryScanProgress,
   getServerStatus,
+  getFunnelStatus,
   getUserPreferences,
   listUsers,
   metadataProviderStatus,
@@ -47,6 +48,7 @@ import {
   rescanLibrary,
   restoreBackup,
   setAccessPassword,
+  setFunnelEnabled,
   setActiveUserId,
   setIbroadcastClientId,
   setSplitContinueWatching,
@@ -66,6 +68,7 @@ import type {
   MetadataProviderStatus,
   RootMapping,
   ServerStatus,
+  FunnelStatus,
   ScanProgress,
   ThemeName,
   UserProfile,
@@ -78,6 +81,7 @@ import { SubtitleSettings } from "./SubtitleSettings";
 import { UserAvatarPicker, AvatarBadge } from "./UserAvatarPicker";
 import { WishlistView } from "./WishlistView";
 import "../activityConsole.css";
+import "../funnelSettings.css";
 
 type Category =
   | "general"
@@ -114,6 +118,8 @@ const themeLabels: Record<ThemeName, string> = {
 export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [category, setCategory] = useState<Category>("general");
   const [status, setStatus] = useState<ServerStatus | null>(null);
+  const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
+  const [funnelBusy, setFunnelBusy] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [avatars, setAvatars] = useState<Record<string, UserAvatar>>({});
   const [active, setActive] = useState(getActiveUserId());
@@ -188,6 +194,10 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     void refreshActivity();
     const timer = window.setInterval(() => void refreshActivity(), 1500);
     return () => window.clearInterval(timer);
+  }, [category]);
+  useEffect(() => {
+    if (category !== "remote") return;
+    void getFunnelStatus().then(setFunnel).catch((c) => setError(String(c)));
   }, [category]);
   useEffect(() => {
     if (!libraryBusy) return;
@@ -323,8 +333,20 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
         if (value) await setAccessPassword(value);
       }
       await refresh();
+      setFunnel(await getFunnelStatus());
     } catch (c) {
       setError(String(c));
+    }
+  };
+  const toggleFunnel = async () => {
+    setFunnelBusy(true);
+    setError(null);
+    try {
+      setFunnel(await setFunnelEnabled(!funnel?.enabled));
+    } catch (c) {
+      setError(String(c));
+    } finally {
+      setFunnelBusy(false);
     }
   };
   const saveTmdb = async () => {
@@ -1050,16 +1072,50 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
             <p className="eyebrow">NETWORK</p>
             <h1>Remote access</h1>
             <div className="settings-card">
-              <h3>Browser access</h3>
-              <p>LAN address: {status?.localUrl}</p>
-              <button onClick={() => void password()}>
-                {status?.accessPasswordSet
-                  ? "Remove access password"
-                  : "Set access password"}
-              </button>
+              <h3>Direct URL</h3>
+              <p>
+                Tailscale or LAN address: <code>{status?.localUrl}</code>
+              </p>
               <p className="muted">
-                Do not expose port 8765 directly to the internet. Use Tailscale
-                or an HTTPS reverse proxy.
+                Direct connections remain password-free and private to the
+                networks that can reach this address.
+              </p>
+            </div>
+            <div className="settings-card funnel-settings-card">
+              <div className="funnel-settings-heading">
+                <div>
+                  <h3>Tailscale Funnel</h3>
+                  <p className="muted">
+                    Temporary public access for devices that cannot run
+                    Tailscale. The Funnel address always requires a password.
+                  </p>
+                </div>
+                <button
+                  className={funnel?.enabled ? "funnel-toggle active" : "funnel-toggle"}
+                  onClick={() => void toggleFunnel()}
+                  disabled={funnelBusy || !funnel?.available || (!funnel?.enabled && !status?.accessPasswordSet)}
+                  aria-pressed={Boolean(funnel?.enabled)}
+                >
+                  {funnelBusy ? "Working…" : funnel?.enabled ? "Turn off" : "Turn on"}
+                </button>
+              </div>
+              <dl>
+                <div><dt>Status</dt><dd>{funnel?.enabled ? "Public access on" : "Off"}</dd></div>
+                <div><dt>Password</dt><dd>{status?.accessPasswordSet ? "Set" : "Required"}</dd></div>
+              </dl>
+              {funnel?.url && <p className="funnel-url">Public URL: <code>{funnel.url}</code></p>}
+              {funnel?.detail && <p className="danger-text">{funnel.detail}</p>}
+              <button onClick={() => void password()} disabled={Boolean(funnel?.enabled)}>
+                {status?.accessPasswordSet
+                  ? "Change or remove Funnel password"
+                  : "Set Funnel password"}
+              </button>
+              {funnel?.enabled && (
+                <p className="muted">Turn Funnel off before changing or removing its password.</p>
+              )}
+              <p className="muted">
+                Turning Funnel off makes the public URL unavailable. It does
+                not affect the direct URL above.
               </p>
             </div>
           </>

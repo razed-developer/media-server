@@ -29,6 +29,7 @@ use tauri::{path::BaseDirectory, Manager};
 
 pub use app_state::Shared;
 pub const PORT: u16 = 8765;
+pub const FUNNEL_GATEWAY_PORT: u16 = 8766;
 
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
@@ -71,7 +72,7 @@ pub fn run() {
             let server_state = shared.clone();
             let web_root = if cfg!(debug_assertions) { None } else { app.path().resolve("web", BaseDirectory::Resource).ok() };
             activity::info("Server", format!("Starting browser server on port {PORT}"));
-            tauri::async_runtime::spawn(async move { server::start(server_state, PORT, web_root).await; });
+            tauri::async_runtime::spawn(async move { server::start(server_state, PORT, FUNNEL_GATEWAY_PORT, web_root).await; });
             if let Some(window) = app.get_webview_window("main") { let _ = window.set_title("Onyx"); }
             Ok(())
         })
@@ -85,6 +86,7 @@ pub fn run() {
             commands::add_movie_path, commands::add_tv_path, commands::remove_movie_path, commands::remove_tv_path,
             commands::configure_library_root,
             commands::set_access_password, commands::clear_access_password,
+            commands::funnel_status, commands::set_funnel_enabled,
             commands::scan_library, commands::library_scan_progress, commands::list_users, commands::create_user, commands::rename_user, commands::delete_user,
             library_health::library_health, library_health::library_health_repair_all, library_health::library_health_repair_item,
             commands::get_user_preferences, commands::set_user_theme, commands::set_split_continue_watching, commands::user_analytics,

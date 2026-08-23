@@ -27,7 +27,7 @@ const USER_HEADER: &str = "x-home-media-user";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct BrowserStatus { running: bool, item_count: usize, ffprobe_available: bool, ffmpeg_available: bool, artwork_cache_bytes: u64 }
+struct BrowserStatus { running: bool, item_count: usize, ffprobe_available: bool, ffmpeg_available: bool, access_password_set: bool, artwork_cache_bytes: u64 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AuthStatus { required: bool, authenticated: bool }
@@ -42,6 +42,7 @@ struct ProgressPayload { seconds: u64, watched_seconds: Option<u64> }
 #[derive(Deserialize)] struct ThemePayload { theme: String }
 #[derive(Deserialize)] struct ContinueWatchingPayload { split: bool }
 #[derive(Deserialize)] #[serde(rename_all = "camelCase")] struct DevicePollPayload { device_code: String }
+#[derive(Deserialize)] struct FunnelTogglePayload { enabled: bool }
 
 fn now_seconds() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) }
 fn cookie_token(headers: &HeaderMap) -> Option<String> {
@@ -114,7 +115,30 @@ async fn api_analytics(State(state): State<Shared>, headers: HeaderMap) -> Resul
 }
 fn command_available(name: &str) -> bool { crate::child_process::command(name).arg("-version").output().map(|o| o.status.success()).unwrap_or(false) }
 async fn api_status(State(state): State<Shared>) -> Json<BrowserStatus> {
-    Json(BrowserStatus { running: true, item_count: state.media.read().map(|m| m.len()).unwrap_or(0), ffprobe_available: command_available("ffprobe"), ffmpeg_available: command_available("ffmpeg"), artwork_cache_bytes: artwork::cache_size(&state.artwork_path) })
+    let access_password_set = state.settings.read().ok().is_some_and(|settings| settings.access_password_hash.is_some());
+    Json(BrowserStatus { running: true, item_count: state.media.read().map(|m| m.len()).unwrap_or(0), ffprobe_available: command_available("ffprobe"), ffmpeg_available: command_available("ffmpeg"), access_password_set, artwork_cache_bytes: artwork::cache_size(&state.artwork_path) })
+}
+
+fn require_owner(state: &crate::AppState, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
+    if database::is_admin(&state.database_path, &request_user(state, headers)) { Ok(()) }
+    else { Err((StatusCode::FORBIDDEN, "Only the Owner profile can manage Funnel access.".into())) }
+}
+async fn api_funnel_status(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<crate::commands::FunnelStatus>, (StatusCode, String)> {
+    require_owner(&state, &headers)?;
+    let password_set = state.settings.read().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Settings are unavailable.".into()))?.access_password_hash.is_some();
+    Ok(Json(crate::commands::read_funnel_status(password_set)))
+}
+async fn api_set_funnel(State(state): State<Shared>, headers: HeaderMap, Json(payload): Json<FunnelTogglePayload>) -> Result<Json<crate::commands::FunnelStatus>, (StatusCode, String)> {
+    require_owner(&state, &headers)?;
+    crate::commands::set_funnel_enabled_for_state(payload.enabled, &state).map(Json).map_err(|error| (StatusCode::BAD_REQUEST, error))
+}
+async fn api_set_funnel_password(State(state): State<Shared>, headers: HeaderMap, Json(payload): Json<LoginPayload>) -> Result<StatusCode, (StatusCode, String)> {
+    require_owner(&state, &headers)?;
+    crate::commands::set_access_password_for_state(payload.password, &state).map(|_| StatusCode::NO_CONTENT).map_err(|error| (StatusCode::BAD_REQUEST, error))
+}
+async fn api_clear_funnel_password(State(state): State<Shared>, headers: HeaderMap) -> Result<StatusCode, (StatusCode, String)> {
+    require_owner(&state, &headers)?;
+    crate::commands::clear_access_password_for_state(&state).map(|_| StatusCode::NO_CONTENT).map_err(|error| (StatusCode::BAD_REQUEST, error))
 }
 async fn api_save_progress(State(state): State<Shared>, headers: HeaderMap, AxumPath(id): AxumPath<String>, Json(payload): Json<ProgressPayload>) -> StatusCode {
     let user = request_user(&state, &headers);
@@ -230,14 +254,17 @@ fn protected_router() -> Router<Shared> {
 
 fn finish_router(router: Router<Shared>, state: Shared, web_root: Option<PathBuf>) -> Router {
     let user_header = HeaderName::from_static(USER_HEADER);
-    let cors = CorsLayer::new().allow_origin(AllowOrigin::mirror_request()).allow_methods([Method::GET, Method::POST]).allow_headers([header::CONTENT_TYPE, header::RANGE, user_header]).allow_credentials(true);
+    let cors = CorsLayer::new().allow_origin(AllowOrigin::mirror_request()).allow_methods([Method::GET, Method::POST, Method::DELETE]).allow_headers([header::CONTENT_TYPE, header::RANGE, user_header]).allow_credentials(true);
     let router = router.layer(cors).with_state(state);
     let router = if let Some(root) = web_root.filter(|p| p.join("index.html").is_file()) { router.fallback_service(ServeDir::new(&root).append_index_html_on_directories(true).not_found_service(ServeFile::new(root.join("index.html")))) } else { router.fallback(dev_browser_redirect) };
     router
 }
 
 pub async fn start(state: Shared, port: u16, funnel_port: u16, web_root: Option<PathBuf>) {
-    let direct = Router::new().route("/api/status", get(api_status)).route("/api/auth/status", get(direct_auth_status)).route("/api/auth/login", post(direct_login)).route("/api/auth/logout", post(logout)).merge(protected_router());
+    let direct = Router::new().route("/api/status", get(api_status)).route("/api/auth/status", get(direct_auth_status)).route("/api/auth/login", post(direct_login)).route("/api/auth/logout", post(logout))
+        .route("/api/admin/funnel", get(api_funnel_status).post(api_set_funnel))
+        .route("/api/admin/funnel/password", post(api_set_funnel_password).delete(api_clear_funnel_password))
+        .merge(protected_router());
     let direct = finish_router(direct, state.clone(), web_root.clone());
     let funnel_protected = protected_router().route_layer(middleware::from_fn_with_state(state.clone(), require_funnel_auth));
     let funnel = Router::new().route("/api/status", get(api_status)).route("/api/auth/status", get(funnel_auth_status)).route("/api/auth/login", post(funnel_login)).route("/api/auth/logout", post(logout)).merge(funnel_protected);

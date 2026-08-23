@@ -506,28 +506,36 @@ export async function setTvPath(path: string): Promise<void> {
   await invoke("set_tv_path", { path });
 }
 export async function setAccessPassword(password: string): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error(
-      "Access passwords are managed from the desktop server app.",
-    );
-  await invoke("set_access_password", { password });
+  if (isTauriDesktop()) {
+    await invoke("set_access_password", { password });
+    return;
+  }
+  const response = await browserFetch(`${serverBaseUrl()}/api/admin/funnel/password`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) throw new Error((await response.text()) || "Could not set Funnel password");
 }
 export async function clearAccessPassword(): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error(
-      "Access passwords are managed from the desktop server app.",
-    );
-  await invoke("clear_access_password");
+  if (isTauriDesktop()) {
+    await invoke("clear_access_password");
+    return;
+  }
+  const response = await browserFetch(`${serverBaseUrl()}/api/admin/funnel/password`, { method: "DELETE" });
+  if (!response.ok) throw new Error((await response.text()) || "Could not remove Funnel password");
 }
 export async function getFunnelStatus(): Promise<FunnelStatus> {
-  if (!isTauriDesktop())
-    throw new Error("Funnel is managed from the desktop server app.");
-  return invoke<FunnelStatus>("funnel_status");
+  if (isTauriDesktop()) return invoke<FunnelStatus>("funnel_status");
+  return json(await browserFetch(`${serverBaseUrl()}/api/admin/funnel`), "Could not load Funnel status");
 }
 export async function setFunnelEnabled(enabled: boolean): Promise<FunnelStatus> {
-  if (!isTauriDesktop())
-    throw new Error("Funnel is managed from the desktop server app.");
-  return invoke<FunnelStatus>("set_funnel_enabled", { enabled });
+  if (isTauriDesktop()) return invoke<FunnelStatus>("set_funnel_enabled", { enabled });
+  return json(await browserFetch(`${serverBaseUrl()}/api/admin/funnel`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  }), "Could not update Funnel status");
 }
 export async function clearThumbnailCache(): Promise<void> {
   if (!isTauriDesktop())

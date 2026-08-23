@@ -40,6 +40,7 @@ import {
   getLibraryScanProgress,
   getServerStatus,
   getFunnelStatus,
+  isTauriDesktop,
   getUserPreferences,
   listUsers,
   metadataProviderStatus,
@@ -164,7 +165,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
         getServerStatus(),
         listUsers(),
         getUserPreferences(),
-        metadataProviderStatus(),
+        isTauriDesktop() ? metadataProviderStatus() : Promise.resolve([]),
         listUserAvatars(),
       ]);
       setStatus(s);
@@ -466,6 +467,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     status?.moviePaths ?? (status?.moviePath ? [status.moviePath] : []);
   const tvPaths = status?.tvPaths ?? (status?.tvPath ? [status.tvPath] : []);
   const activeProfile = users.find((user) => user.id === active) ?? users[0];
+  const canManageFunnel = isTauriDesktop() || Boolean(activeProfile?.isAdmin);
   const roots = (kind: "movie" | "tv", paths: string[], Icon: typeof Film) => (
     <div className="settings-card library-root-card">
       <div className="library-root-heading">
@@ -567,13 +569,13 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
           <Palette size={18} />
           Appearance
         </button>
-        <button
+        {canManageFunnel && <button
           className={category === "remote" ? "active" : ""}
           onClick={() => setCategory("remote")}
         >
           <KeyRound size={18} />
           Remote access
-        </button>
+        </button>}
         <button
           className={category === "music" ? "active" : ""}
           onClick={() => setCategory("music")}

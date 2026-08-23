@@ -41,7 +41,7 @@ pub struct FunnelStatus {
 
 fn tailscale_command() -> Command { crate::child_process::command("tailscale") }
 
-fn read_funnel_status(password_set: bool) -> FunnelStatus {
+pub(crate) fn read_funnel_status(password_set: bool) -> FunnelStatus {
     let output = tailscale_command().args(["funnel", "status"]).output();
     let Ok(output) = output else { return FunnelStatus { available: false, enabled: false, url: None, password_set, detail: Some("Tailscale CLI was not found on this computer.".into()) }; };
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -58,8 +58,7 @@ pub fn funnel_status(state: TauriState<'_, Shared>) -> Result<FunnelStatus, Stri
     Ok(read_funnel_status(password_set))
 }
 
-#[tauri::command]
-pub fn set_funnel_enabled(enabled: bool, state: TauriState<'_, Shared>) -> Result<FunnelStatus, String> {
+pub(crate) fn set_funnel_enabled_for_state(enabled: bool, state: &Shared) -> Result<FunnelStatus, String> {
     let password_set = state.settings.read().map_err(|_| "Settings lock poisoned")?.access_password_hash.is_some();
     if enabled && !password_set { return Err("Set a Funnel password before turning on public access.".into()); }
     let output = if enabled {
@@ -73,6 +72,11 @@ pub fn set_funnel_enabled(enabled: bool, state: TauriState<'_, Shared>) -> Resul
         return Err(if stderr.is_empty() { stdout } else { stderr });
     }
     Ok(read_funnel_status(password_set))
+}
+
+#[tauri::command]
+pub fn set_funnel_enabled(enabled: bool, state: TauriState<'_, Shared>) -> Result<FunnelStatus, String> {
+    set_funnel_enabled_for_state(enabled, state.inner())
 }
 
 #[derive(Serialize)]
@@ -326,8 +330,7 @@ async fn remove_root_async(state: TauriState<'_, Shared>, kind: &'static str, pa
 #[tauri::command] pub async fn remove_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "movie", path).await }
 #[tauri::command] pub async fn remove_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "tv", path).await }
 
-#[tauri::command]
-pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> Result<(), String> {
+pub(crate) fn set_access_password_for_state(password: String, state: &Shared) -> Result<(), String> {
     if password.chars().count() < 8 { return Err("Access password must be at least 8 characters".into()); }
     let hash = hash_password(&password)?;
     state.settings.write().map_err(|_| "Settings lock poisoned")?.access_password_hash = Some(hash);
@@ -336,11 +339,20 @@ pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> R
 }
 
 #[tauri::command]
-pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String> {
+pub fn set_access_password(password: String, state: TauriState<'_, Shared>) -> Result<(), String> {
+    set_access_password_for_state(password, state.inner())
+}
+
+pub(crate) fn clear_access_password_for_state(state: &Shared) -> Result<(), String> {
     if read_funnel_status(true).enabled { return Err("Turn off Tailscale Funnel before removing its password.".into()); }
     state.settings.write().map_err(|_| "Settings lock poisoned")?.access_password_hash = None;
     state.sessions.write().map_err(|_| "Session lock poisoned")?.clear();
     persist_settings(&state)
+}
+
+#[tauri::command]
+pub fn clear_access_password(state: TauriState<'_, Shared>) -> Result<(), String> {
+    clear_access_password_for_state(state.inner())
 }
 
 #[tauri::command]

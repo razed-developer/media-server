@@ -18,6 +18,8 @@ pub struct LiveChannel {
     pub criteria_value: String,
     #[serde(default)]
     pub criteria_values: Vec<String>,
+    #[serde(default = "default_genre_scope")]
+    pub genre_scope: String,
     pub order_mode: String,
     pub anchor_time: i64,
     pub created_at: i64,
@@ -45,8 +47,12 @@ pub struct LiveChannelInput {
     pub criteria_value: Option<String>,
     #[serde(default)]
     pub criteria_values: Vec<String>,
+    #[serde(default = "default_genre_scope")]
+    pub genre_scope: String,
     pub order_mode: String,
 }
+
+fn default_genre_scope() -> String { "both".into() }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,6 +131,7 @@ fn validate_input(input: &LiveChannelInput) -> Result<(), String> {
     if !matches!(input.criteria_type.as_str(), "show" | "genre" | "playlist") { return Err("Channel criteria must be a TV show, genre, or playlist".into()); }
     if normalized_values(input).is_empty() { return Err("Choose content for this channel".into()); }
     if input.criteria_type == "playlist" && normalized_values(input).len() != 1 { return Err("Playlist channels use one playlist".into()); }
+    if input.criteria_type == "genre" && !matches!(input.genre_scope.as_str(), "movies" | "shows" | "both") { return Err("Genre channels must use Movies, Shows, or Both".into()); }
     if !matches!(input.order_mode.as_str(), "sequential" | "shuffle") { return Err("Channel order must be sequential or shuffle".into()); }
     Ok(())
 }
@@ -142,6 +149,7 @@ pub fn save(root: &Path, user_id: &str, input: LiveChannelInput) -> Result<Vec<L
         criteria_type: input.criteria_type,
         criteria_value,
         criteria_values,
+        genre_scope: input.genre_scope,
         order_mode: input.order_mode,
         anchor_time: now,
         created_at: now,
@@ -212,7 +220,12 @@ fn candidates(channel: &LiveChannel, media: &[MediaItem], playlists: &[Playlist]
             item.kind == "episode" && item.show_title.as_deref().is_some_and(|title| selected.iter().any(|value| title.eq_ignore_ascii_case(value)))
         }).cloned().collect::<Vec<_>>(),
         "genre" => media.iter().filter(|item| {
-            item.genres.iter().any(|genre| selected.iter().any(|value| genre.eq_ignore_ascii_case(value)))
+            let in_scope = match channel.genre_scope.as_str() {
+                "movies" => item.kind == "movie",
+                "shows" => item.kind == "episode",
+                _ => item.kind == "movie" || item.kind == "episode",
+            };
+            in_scope && item.genres.iter().any(|genre| selected.iter().any(|value| genre.eq_ignore_ascii_case(value)))
         }).cloned().collect::<Vec<_>>(),
         "playlist" => {
             let lookup: HashMap<&str, &MediaItem> = media.iter().map(|item| (item.id.as_str(), item)).collect();
@@ -357,7 +370,7 @@ mod tests {
 
     #[test]
     fn schedule_advances_while_away() {
-        let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), criteria_values: vec!["Demo".into()], order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
+        let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), criteria_values: vec!["Demo".into()], genre_scope: "both".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
         let items = vec![media("a", 600, 1, "Demo"), media("b", 600, 2, "Demo"), media("c", 600, 3, "Demo")];
         let row = build_row(channel, &items, &[], 2_200, 3_600);
         assert_eq!(row.current.as_ref().unwrap().media_id, "c");
@@ -369,7 +382,7 @@ mod tests {
 
     #[test]
     fn multi_show_channel_combines_selected_shows() {
-        let channel = LiveChannel { id: "sw".into(), name: "Star Wars".into(), criteria_type: "show".into(), criteria_value: "Andor".into(), criteria_values: vec!["Andor".into(), "Ahsoka".into()], order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
+        let channel = LiveChannel { id: "sw".into(), name: "Star Wars".into(), criteria_type: "show".into(), criteria_value: "Andor".into(), criteria_values: vec!["Andor".into(), "Ahsoka".into()], genre_scope: "both".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
         let items = vec![media("a", 600, 1, "Andor"), media("b", 600, 1, "Ahsoka"), media("c", 600, 1, "Other")];
         let selected = candidates(&channel, &items, &[]);
         assert_eq!(selected.len(), 2);

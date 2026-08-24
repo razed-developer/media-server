@@ -10,6 +10,7 @@ pub struct Settings {
     #[serde(default)] pub tv_path: Option<String>,
     #[serde(default)] pub movie_paths: Vec<String>,
     #[serde(default)] pub tv_paths: Vec<String>,
+    #[serde(default)] pub special_paths: Vec<String>,
     #[serde(default)] pub access_password_hash: Option<String>,
     #[serde(default)] pub setup_complete: bool,
     #[serde(default)] pub ibroadcast_client_id: Option<String>,
@@ -28,6 +29,10 @@ impl Settings {
         if values.is_empty() {
             if let Some(path) = self.tv_path.clone().filter(|value| !value.trim().is_empty()) { values.push(path); }
         }
+        values.sort(); values.dedup(); values
+    }
+    pub fn effective_special_paths(&self) -> Vec<String> {
+        let mut values = self.special_paths.clone();
         values.sort(); values.dedup(); values
     }
 }
@@ -91,6 +96,7 @@ pub fn load_settings(path: &Path) -> Settings {
     if settings.tv_paths.is_empty() { if let Some(path) = settings.tv_path.clone() { settings.tv_paths.push(path); } }
     settings.movie_paths.sort(); settings.movie_paths.dedup();
     settings.tv_paths.sort(); settings.tv_paths.dedup();
+    settings.special_paths.sort(); settings.special_paths.dedup();
     settings
 }
 

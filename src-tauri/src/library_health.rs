@@ -45,18 +45,18 @@ pub struct RepairReport {
 fn assess_item(database_path: &Path, item: &MediaItem) -> LibraryHealthItem {
     let mut issues: Vec<String> = Vec::new();
     if !Path::new(&item.path).is_file() { issues.push("Source file is missing".into()); }
-    if item.provider_id.is_none() { issues.push("Not matched to TMDB".into()); }
+    if item.kind != "special" && item.provider_id.is_none() { issues.push("Not matched to TMDB".into()); }
     if item.kind == "movie" && item.year.is_none() { issues.push("Release year is missing".into()); }
     if item.kind == "episode" {
         if item.show_title.as_deref().map_or(true, str::is_empty) { issues.push("Show name is missing".into()); }
         if item.season.is_none() || item.episode.is_none() { issues.push("Season or episode number is missing".into()); }
     }
-    if item.overview.as_deref().map_or(true, str::is_empty) { issues.push("Overview is missing".into()); }
-    if item.poster_url.is_none() { issues.push("Poster is missing".into()); }
-    if item.backdrop_url.is_none() { issues.push("Backdrop is missing".into()); }
+    if item.kind != "special" && item.overview.as_deref().map_or(true, str::is_empty) { issues.push("Overview is missing".into()); }
+    if item.kind != "special" && item.poster_url.is_none() { issues.push("Poster is missing".into()); }
+    if item.kind != "special" && item.backdrop_url.is_none() { issues.push("Backdrop is missing".into()); }
     if item.kind == "episode" && item.thumbnail_url.is_none() { issues.push("Episode artwork is missing".into()); }
     if item.duration_seconds.is_none() || item.container.is_none() { issues.push("Technical media probe is incomplete".into()); }
-    let manual_match = metadata::entity_for_media(database_path, &item.id).ok().flatten().and_then(|entity| {
+    let manual_match = item.kind != "special" && metadata::entity_for_media(database_path, &item.id).ok().flatten().and_then(|entity| {
         let target = if entity.entity_type == "movie" { Some(entity) } else { metadata::series_for_media(database_path, &item.id).ok().flatten() }?;
         metadata::provider_match(database_path, &target.id, "tmdb").ok().flatten()
     }).is_some_and(|value| value.locked || value.matched_by == "manual");

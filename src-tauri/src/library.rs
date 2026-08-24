@@ -46,6 +46,7 @@ pub fn scan(
         let parsed = match kind_hint {
             Some("movie") => naming::parse_movie(path),
             Some("episode") => naming::parse_tv(path),
+            Some("special") => { let mut value = naming::parse_movie(path); value.kind = "special".into(); value.year = None; value },
             _ => naming::parse(path),
         };
         let parsed = apply_override(parsed, &id, path, &item_overrides, &show_overrides);
@@ -63,6 +64,7 @@ pub fn scan(
             default: track.default,
         }));
         let is_episode = parsed.kind == "episode";
+        let is_special = parsed.kind == "special";
         media.push(MediaItem {
             id: id.clone(),
             title: parsed.title,
@@ -74,8 +76,8 @@ pub fn scan(
             episode_end: parsed.episode_end,
             path: path_text,
             stream_url: format!("/play/{id}"),
-            poster_url: Some(format!("/art/{id}/poster")),
-            backdrop_url: Some(format!("/art/{id}/backdrop")),
+            poster_url: (!is_special).then(|| format!("/art/{id}/poster")),
+            backdrop_url: (!is_special).then(|| format!("/art/{id}/backdrop")),
             thumbnail_url: is_episode.then(|| format!("/art/{id}/thumbnail")),
             subtitles,
             progress_seconds: 0,

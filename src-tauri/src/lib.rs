@@ -56,7 +56,8 @@ pub fn run() {
     if let Err(error) = metadata::init(&database_path) { activity::error("Metadata", format!("Metadata initialization failed: {error}")); }
     if let Err(error) = user_features::init(&database_path) { activity::error("Users", format!("User feature initialization failed: {error}")); }
     let initial_media = database::load_library(&database_path).unwrap_or_default();
-    let _ = metadata::reconcile_local_entities(&database_path, &initial_media);
+    let metadata_media = initial_media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
+    let _ = metadata::reconcile_local_entities(&database_path, &metadata_media);
     activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
@@ -84,6 +85,7 @@ pub fn run() {
             commands::setup_status, commands::complete_setup, commands::set_ibroadcast_client_id,
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::add_movie_path, commands::add_tv_path, commands::remove_movie_path, commands::remove_tv_path,
+            commands::add_special_path, commands::remove_special_path,
             commands::configure_library_root,
             commands::set_access_password, commands::clear_access_password,
             commands::funnel_status, commands::set_funnel_enabled,

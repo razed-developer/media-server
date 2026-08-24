@@ -99,6 +99,7 @@ export interface ServerStatus {
   tvPath?: string;
   moviePaths?: string[];
   tvPaths?: string[];
+  specialPaths?: string[];
   itemCount: number;
   ffprobeAvailable: boolean;
   ffmpegAvailable: boolean;
@@ -119,6 +120,7 @@ export interface BackupPreview {
   createdAt: number;
   moviePaths: string[];
   tvPaths: string[];
+  specialPaths: string[];
   mediaItems: number;
   users: number;
   includesTmdb: boolean;
@@ -145,6 +147,7 @@ export interface SetupStatus {
   tvPath?: string;
   moviePaths?: string[];
   tvPaths?: string[];
+  specialPaths?: string[];
   ibroadcastClientId?: string;
   users: UserProfile[];
 }
@@ -205,12 +208,14 @@ export interface LibraryRepairReport {
 
 export type LiveChannelCriteria = "show" | "genre" | "playlist";
 export type LiveChannelOrder = "sequential" | "shuffle";
+export type LiveChannelGenreScope = "movies" | "shows" | "both";
 export interface LiveChannel {
   id: string;
   name: string;
   criteriaType: LiveChannelCriteria;
   criteriaValue: string;
   criteriaValues?: string[];
+  genreScope?: LiveChannelGenreScope;
   orderMode: LiveChannelOrder;
   anchorTime: number;
   createdAt: number;
@@ -222,6 +227,7 @@ export interface LiveChannelInput {
   criteriaType: LiveChannelCriteria;
   criteriaValue?: string;
   criteriaValues?: string[];
+  genreScope?: LiveChannelGenreScope;
   orderMode: LiveChannelOrder;
 }
 export interface GuideProgram {

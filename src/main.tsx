@@ -23,6 +23,7 @@ import './onyx-features.css';
 import './userFeatures.css';
 import './libraryCompact.css';
 import './liveChannels.css';
+import './liveChannelPicker.css';
 import './projectorLive.css';
 import './fullscreen.css';
 import './scrollEnhancements.css';

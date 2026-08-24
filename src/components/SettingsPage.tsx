@@ -211,12 +211,12 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     const timer = window.setInterval(update, 400);
     return () => window.clearInterval(timer);
   }, [libraryBusy]);
-  const addFolder = async (kind: "movie" | "tv") => {
+  const addFolder = async (kind: "movie" | "tv" | "special") => {
     const path = await chooseLibraryPath();
     if (!path) return;
     setLibraryBusy(true);
     setLibraryMessage(
-      `Scanning ${kind === "movie" ? "movie" : "TV"} folder… This can take several minutes for a large library.`,
+      `Scanning ${kind === "movie" ? "movie" : kind === "tv" ? "TV" : "specials"} folder… This can take several minutes for a large library.`,
     );
     setError(null);
     try {
@@ -231,7 +231,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
       setLibraryBusy(false);
     }
   };
-  const removeFolder = async (kind: "movie" | "tv", path: string) => {
+  const removeFolder = async (kind: "movie" | "tv" | "special", path: string) => {
     setLibraryBusy(true);
     setLibraryMessage("Updating folders and rescanning the library…");
     setError(null);
@@ -473,14 +473,15 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const moviePaths =
     status?.moviePaths ?? (status?.moviePath ? [status.moviePath] : []);
   const tvPaths = status?.tvPaths ?? (status?.tvPath ? [status.tvPath] : []);
+  const specialPaths = status?.specialPaths ?? [];
   const activeProfile = users.find((user) => user.id === active) ?? users[0];
   const canManageFunnel = isTauriDesktop() || Boolean(activeProfile?.isAdmin);
-  const roots = (kind: "movie" | "tv", paths: string[], Icon: typeof Film) => (
+  const roots = (kind: "movie" | "tv" | "special", paths: string[], Icon: typeof Film) => (
     <div className="settings-card library-root-card">
       <div className="library-root-heading">
         <Icon />
         <div>
-          <h3>{kind === "movie" ? "Movies" : "TV Shows"}</h3>
+          <h3>{kind === "movie" ? "Movies" : kind === "tv" ? "TV Shows" : "Specials & Documentaries"}</h3>
           <p>
             {paths.length
               ? `${paths.length} ${paths.length === 1 ? "folder" : "folders"}`
@@ -510,7 +511,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
         {!paths.length && (
           <p className="muted">
             Add one or more folders. Onyx scans all of them into the same{" "}
-            {kind === "movie" ? "movie" : "TV"} library.
+            {kind === "movie" ? "movie" : kind === "tv" ? "TV" : "specials"} library.
           </p>
         )}
       </div>
@@ -711,6 +712,8 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
             </div>
             {roots("movie", moviePaths, Film)}
             {roots("tv", tvPaths, Tv)}
+            {roots("special", specialPaths, FolderOpen)}
+            <p className="muted">Specials folders are scanned recursively. Onyx uses filenames as titles and does not request TMDB metadata or artwork.</p>
             <button disabled={libraryBusy} onClick={() => void rescan()}>
               <RefreshCw className={libraryBusy ? "spin" : ""} size={17} />
               {libraryBusy ? "Scanning libraries…" : "Rescan libraries"}

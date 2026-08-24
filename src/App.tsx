@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
-  ArrowLeft, BarChart3, Check, ChevronDown, EyeOff, Expand, Film, History,
+  ArrowLeft, BarChart3, Check, ChevronDown, EyeOff, Expand, Film, FolderOpen, History,
   Home, Layers3, List, ListVideo, LogOut, Maximize2, Minus, Music2, Play,
   Plus, Radio, Search, Settings, Star, Subtitles, Tv, UserRound, X,
 } from 'lucide-react';
@@ -33,7 +33,7 @@ const fallbackStatus: ServerStatus = {
 };
 const emptyAnalytics: AnalyticsSummary = { totalSeconds: 0, movieSeconds: 0, tvSeconds: 0, shows: [], genres: [] };
 
-type Section = 'home' | 'movies' | 'tv' | 'live' | 'music' | 'history' | 'playlists' | 'analytics' | 'settings' | 'hidden';
+type Section = 'home' | 'movies' | 'tv' | 'specials' | 'live' | 'music' | 'history' | 'playlists' | 'analytics' | 'settings' | 'hidden';
 type TvView = 'season' | 'list';
 type TvShow = { title: string; episodes: MediaItem[]; representative: MediaItem; seasons: number; addedAt: number };
 type MenuTarget =
@@ -107,7 +107,7 @@ function MediaCard({ item, onPlay, onMenu, artwork = 'default' }: { item: MediaI
     </div>
     <ProgressLine value={percent(item)} />
     <h3>{item.title}</h3>
-    <p>{item.kind === 'episode' ? episodeLabel(item) : item.year ?? 'Movie'}</p>
+    <p>{item.kind === 'episode' ? episodeLabel(item) : item.kind === 'special' ? 'Special' : item.year ?? 'Movie'}</p>
   </article>;
 }
 function ShowCard({ show, onOpen, onMenu }: { show: TvShow; onOpen: (show: TvShow) => void; onMenu: (event: ReactMouseEvent, show: TvShow) => void }) {
@@ -207,6 +207,7 @@ function App() {
   }, []);
 
   const movies = useMemo(() => items.filter(i => i.kind === 'movie'), [items]);
+  const specials = useMemo(() => items.filter(i => i.kind === 'special'), [items]);
   const episodes = useMemo(() => items.filter(i => i.kind === 'episode').sort((a, b) => (a.showTitle ?? '').localeCompare(b.showTitle ?? '') || (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0)), [items]);
   const makeShows = (source: MediaItem[]) => {
     const grouped = new Map<string, MediaItem[]>();
@@ -286,6 +287,7 @@ function App() {
     <button className={section === 'home' ? 'active' : ''} onClick={() => navigate('home')}><Home size={19} />Home</button>
     <button className={section === 'movies' ? 'active' : ''} onClick={() => navigate('movies')}><Film size={19} />Movies</button>
     <button className={section === 'tv' ? 'active' : ''} onClick={() => navigate('tv')}><Tv size={19} />TV</button>
+    <button className={section === 'specials' ? 'active' : ''} onClick={() => navigate('specials')}><FolderOpen size={19} />Specials</button>
     <button className={section === 'live' ? 'active' : ''} onClick={() => navigate('live')}><Radio size={19} />Live TV</button>
     <button className={section === 'music' ? 'active' : ''} onClick={() => navigate('music')}><Music2 size={19} />Music</button>
     <button className={section === 'history' ? 'active' : ''} onClick={() => navigate('history')}><History size={19} />History</button>
@@ -308,6 +310,7 @@ function App() {
       {section === 'movies' && <><PageHero eyebrow="MOVIES" title="Movies" subtitle={`${movies.length} titles`} /><section className="gallery">{visibleMovies.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
       {section === 'tv' && !selectedShow && <><PageHero eyebrow="TELEVISION" title="TV Shows" subtitle={`${shows.length} shows · ${episodes.length} episodes`} /><section className="gallery show-gallery">{visibleShows.map(show => <ShowCard key={show.title} show={show} onOpen={value => { setSelectedShowTitle(value.title); setQuery(''); }} onMenu={(e, v) => openMenu(e, { type: 'show', show: v })} />)}</section></>}
       {section === 'tv' && selectedShow && <><section className="show-hero compact-hero" style={showBackdrop ? { backgroundImage: `linear-gradient(90deg,var(--bg) 0%,rgba(5,7,10,.80) 60%),url(${resolveMediaUrl(showBackdrop)})` } : undefined}><div><button className="back-button" onClick={() => { setSelectedShowTitle(null); setQuery(''); }}><ArrowLeft size={18} />All TV shows</button><p className="eyebrow">TV SHOW</p><h1>{selectedShow.title}</h1><p>{selectedShow.seasons} seasons · {selectedShow.episodes.length} episodes {allWatched(selectedShow.episodes) ? '· Watched' : ''}</p><MetadataSummary item={selectedShow.representative} />{isDesktop && <SocialBar targetType="show" targetKey={showSocialKey} title={selectedShow.title} posterUrl={selectedShow.representative.posterUrl} users={users} />}</div><div className="view-toggle"><button className={tvView === 'season' ? 'active' : ''} onClick={() => setTvView('season')}><Layers3 size={17} />By season</button><button className={tvView === 'list' ? 'active' : ''} onClick={() => setTvView('list')}><List size={17} />All episodes</button></div></section>{tvView === 'list' ? <section className="gallery episode-grid">{showEpisodes.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section> : <div className="season-groups">{seasonGroups.map(group => <section className="season-section" key={group.season}><div className="season-heading" onContextMenu={e => openMenu(e, { type: 'season', showTitle: selectedShow.title, season: group.season, items: group.items })}><div><p>{selectedShow.title}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`} {allWatched(group.items) && <Check size={18} />}</h2><ProgressLine value={groupPercent(group.items)} /></div><span>{group.items.length} episodes</span></div><div className="gallery">{group.items.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</div></section>)}</div>}</>}
+      {section === 'specials' && <><PageHero eyebrow="SPECIALS" title="Specials & Documentaries" subtitle={`${specials.length} files`} /><section className="gallery episode-grid">{specials.map(item => <MediaCard key={item.id} item={item} artwork="thumbnail" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
       {section === 'live' && <LiveChannelsView media={items} onOpenSettings={() => navigate('settings')} />}
       {section === 'music' && <MusicView />}
       {section === 'history' && <><PageHero eyebrow="HISTORY" title="Recently watched" subtitle={`${historyItems.length} items`} /><section className="gallery">{visibleHistory.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}

@@ -1,17 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriDesktop } from './api';
 
-export async function addLibraryRoot(kind:'movie'|'tv', path:string):Promise<void>{
+export async function addLibraryRoot(kind:'movie'|'tv'|'special', path:string):Promise<void>{
   if(!isTauriDesktop()) throw new Error('Library folders are managed from the desktop server app.');
-  await invoke(kind==='movie'?'add_movie_path':'add_tv_path',{path});
+  await invoke(kind==='movie'?'add_movie_path':kind==='tv'?'add_tv_path':'add_special_path',{path});
 }
 
-export async function removeLibraryRoot(kind:'movie'|'tv', path:string):Promise<void>{
+export async function removeLibraryRoot(kind:'movie'|'tv'|'special', path:string):Promise<void>{
   if(!isTauriDesktop()) throw new Error('Library folders are managed from the desktop server app.');
-  await invoke(kind==='movie'?'remove_movie_path':'remove_tv_path',{path});
+  await invoke(kind==='movie'?'remove_movie_path':kind==='tv'?'remove_tv_path':'remove_special_path',{path});
 }
 
-export async function configureLibraryRoot(kind:'movie'|'tv',path:string,add:boolean):Promise<void>{
+export async function configureLibraryRoot(kind:'movie'|'tv'|'special',path:string,add:boolean):Promise<void>{
   if(!isTauriDesktop()) throw new Error('Library folders are managed from the desktop server app.');
   await invoke('configure_library_root',{kind,path,add});
 }

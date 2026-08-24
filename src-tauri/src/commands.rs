@@ -19,6 +19,7 @@ pub struct ServerStatus {
     tv_path: Option<String>,
     movie_paths: Vec<String>,
     tv_paths: Vec<String>,
+    special_paths: Vec<String>,
     item_count: usize,
     ffprobe_available: bool,
     ffmpeg_available: bool,
@@ -87,6 +88,7 @@ pub struct SetupStatus {
     tv_path: Option<String>,
     movie_paths: Vec<String>,
     tv_paths: Vec<String>,
+    special_paths: Vec<String>,
     ibroadcast_client_id: Option<String>,
     users: Vec<UserProfile>,
 }
@@ -161,16 +163,17 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
     }
 
     let result: Result<Vec<MediaItem>, String> = (|| {
-        let (legacy_path, movie_paths, tv_paths) = {
+        let (legacy_path, movie_paths, tv_paths, special_paths) = {
             let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
-            (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths())
+            (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths(), settings.effective_special_paths())
         };
         let mut roots: Vec<(PathBuf, Option<&str>)> = Vec::new();
-        if movie_paths.is_empty() && tv_paths.is_empty() {
+        if movie_paths.is_empty() && tv_paths.is_empty() && special_paths.is_empty() {
             if let Some(root) = legacy_path { roots.push((PathBuf::from(root), None)); }
         } else {
             roots.extend(movie_paths.into_iter().map(|root| (PathBuf::from(root), Some("movie"))));
             roots.extend(tv_paths.into_iter().map(|root| (PathBuf::from(root), Some("episode"))));
+            roots.extend(special_paths.into_iter().map(|root| (PathBuf::from(root), Some("special"))));
         }
 
         let mut media = Vec::new();
@@ -205,7 +208,8 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
         });
         if let Ok(mut progress) = state.scan_progress.write() { progress.phase = "saving".into(); }
         database::replace_library(&state.database_path, &media)?;
-        metadata::reconcile_local_entities(&state.database_path, &media)?;
+        let metadata_media = media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
+        metadata::reconcile_local_entities(&state.database_path, &metadata_media)?;
         *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone();
         crate::activity::info("Library", format!("Library scan complete: {} media files", media.len()));
         Ok(media)
@@ -227,7 +231,7 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
 fn update_root(state: &crate::app_state::AppState, kind: &str, path: String, add: bool) -> Result<(), String> {
     validate_folder(&path)?;
     let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
-    let target = if kind == "movie" { &mut settings.movie_paths } else { &mut settings.tv_paths };
+    let target = match kind { "movie" => &mut settings.movie_paths, "tv" => &mut settings.tv_paths, _ => &mut settings.special_paths };
     if add {
         if !target.iter().any(|existing| Path::new(existing) == Path::new(&path)) { target.push(path.clone()); }
     } else {
@@ -235,7 +239,7 @@ fn update_root(state: &crate::app_state::AppState, kind: &str, path: String, add
         target.push(path.clone());
     }
     target.sort(); target.dedup();
-    if kind == "movie" { settings.movie_path = target.first().cloned(); } else { settings.tv_path = target.first().cloned(); }
+    if kind == "movie" { settings.movie_path = target.first().cloned(); } else if kind == "tv" { settings.tv_path = target.first().cloned(); }
     drop(settings);
     persist_settings(state)?;
     scan(state)?;
@@ -244,9 +248,9 @@ fn update_root(state: &crate::app_state::AppState, kind: &str, path: String, add
 
 fn remove_root(state: &crate::app_state::AppState, kind: &str, path: &str) -> Result<(), String> {
     let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
-    let target = if kind == "movie" { &mut settings.movie_paths } else { &mut settings.tv_paths };
+    let target = match kind { "movie" => &mut settings.movie_paths, "tv" => &mut settings.tv_paths, _ => &mut settings.special_paths };
     target.retain(|value| Path::new(value) != Path::new(path));
-    if kind == "movie" { settings.movie_path = target.first().cloned(); } else { settings.tv_path = target.first().cloned(); }
+    if kind == "movie" { settings.movie_path = target.first().cloned(); } else if kind == "tv" { settings.tv_path = target.first().cloned(); }
     drop(settings);
     persist_settings(state)?;
     scan(state)?;
@@ -255,17 +259,17 @@ fn remove_root(state: &crate::app_state::AppState, kind: &str, path: &str) -> Re
 
 #[tauri::command]
 pub fn configure_library_root(kind: String, path: String, add: bool, state: TauriState<'_, Shared>) -> Result<(), String> {
-    if kind != "movie" && kind != "tv" { return Err("Unknown library type".into()); }
+    if !matches!(kind.as_str(), "movie" | "tv" | "special") { return Err("Unknown library type".into()); }
     if add { validate_folder(&path)?; }
     let mut settings = state.settings.write().map_err(|_| "Settings lock poisoned")?;
-    let target = if kind == "movie" { &mut settings.movie_paths } else { &mut settings.tv_paths };
+    let target = match kind.as_str() { "movie" => &mut settings.movie_paths, "tv" => &mut settings.tv_paths, _ => &mut settings.special_paths };
     if add {
         if !target.iter().any(|existing| Path::new(existing) == Path::new(&path)) { target.push(path); }
     } else {
         target.retain(|existing| Path::new(existing) != Path::new(&path));
     }
     target.sort(); target.dedup();
-    if kind == "movie" { settings.movie_path = target.first().cloned(); } else { settings.tv_path = target.first().cloned(); }
+    if kind == "movie" { settings.movie_path = target.first().cloned(); } else if kind == "tv" { settings.tv_path = target.first().cloned(); }
     drop(settings);
     persist_settings(&state)
 }
@@ -275,12 +279,14 @@ pub fn setup_status(state: TauriState<'_, Shared>) -> Result<SetupStatus, String
     let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
     let movie_paths = settings.effective_movie_paths();
     let tv_paths = settings.effective_tv_paths();
+    let special_paths = settings.effective_special_paths();
     Ok(SetupStatus {
         complete: settings.setup_complete,
         movie_path: movie_paths.first().cloned(),
         tv_path: tv_paths.first().cloned(),
         movie_paths,
         tv_paths,
+        special_paths,
         ibroadcast_client_id: settings.ibroadcast_client_id.clone(),
         users: database::list_users(&state.database_path)?,
     })
@@ -329,6 +335,8 @@ async fn remove_root_async(state: TauriState<'_, Shared>, kind: &'static str, pa
 #[tauri::command] pub async fn add_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "tv", path, true).await }
 #[tauri::command] pub async fn remove_movie_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "movie", path).await }
 #[tauri::command] pub async fn remove_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "tv", path).await }
+#[tauri::command] pub async fn add_special_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "special", path, true).await }
+#[tauri::command] pub async fn remove_special_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "special", path).await }
 
 pub(crate) fn set_access_password_for_state(password: String, state: &Shared) -> Result<(), String> {
     if password.chars().count() < 8 { return Err("Access password must be at least 8 characters".into()); }
@@ -539,6 +547,7 @@ pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, Stri
     let item_count = state.media.read().map_err(|_| "Media lock poisoned")?.len();
     let movie_paths = settings.effective_movie_paths();
     let tv_paths = settings.effective_tv_paths();
+    let special_paths = settings.effective_special_paths();
     Ok(ServerStatus {
         running: true,
         local_url: lan_url(),
@@ -547,6 +556,7 @@ pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, Stri
         tv_path: tv_paths.first().cloned(),
         movie_paths,
         tv_paths,
+        special_paths,
         item_count,
         ffprobe_available: command_available("ffprobe"),
         ffmpeg_available: command_available("ffmpeg"),

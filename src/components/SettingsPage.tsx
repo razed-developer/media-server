@@ -62,7 +62,7 @@ import {
   activityEntries as loadActivityEntries,
   clearActivity,
 } from "../adminTools";
-import { listUserAvatars, type UserAvatar } from "../userFeaturesApi";
+import { BUILTIN_AVATARS, listUserAvatars, setBuiltinUserAvatar, type UserAvatar } from "../userFeaturesApi";
 import type {
   ActivityEntry,
   BackupPreview,
@@ -131,6 +131,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [newUserOpen, setNewUserOpen] = useState(false);
   const [newUserName, setNewUserName] = useState("");
+  const [newUserAvatar, setNewUserAvatar] = useState<string>("onyx");
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [providers, setProviders] = useState<MetadataProviderStatus[]>([]);
   const [tmdbToken, setTmdbTokenDraft] = useState("");
@@ -268,11 +269,17 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     const name = newUserName.trim();
     if (!name) return;
     try {
-      syncUsers(await createUser(name));
+      const previousIds = new Set(users.map((user) => user.id));
+      const next = await createUser(name);
+      syncUsers(next);
+      const created = next.find((user) => !previousIds.has(user.id));
+      if (created) {
+        const avatar = await setBuiltinUserAvatar(created.id, newUserAvatar);
+        setAvatars((current) => ({ ...current, [created.id]: avatar }));
+      }
       setNewUserName("");
+      setNewUserAvatar("onyx");
       setNewUserOpen(false);
-      await refresh();
-      onChanged?.();
     } catch (c) {
       setError(String(c));
     }
@@ -1004,7 +1011,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
               ))}
               {newUserOpen ? (
                 <div className="settings-card settings-user-row">
-                  <UserRound />
+                  <AvatarBadge avatar={{ userId: "new", avatarId: newUserAvatar }} name={newUserName || "New user"} />
                   <label>
                     <span>New user</span>
                     <input
@@ -1038,6 +1045,13 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
                   >
                     <X size={16} />
                   </button>
+                  <div className="new-user-avatar-colors" aria-label="Avatar colour">
+                    {BUILTIN_AVATARS.map((id) => (
+                      <button key={id} type="button" className={newUserAvatar === id ? "active" : ""} onClick={() => setNewUserAvatar(id)} aria-label={`Choose ${id} avatar`}>
+                        <AvatarBadge avatar={{ userId: "new", avatarId: id }} name={newUserName || "New user"} size="sm" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <button onClick={() => setNewUserOpen(true)}>

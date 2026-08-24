@@ -13,6 +13,12 @@ const cachedGuideHasRoom=(channelIds:string[])=>{try{const raw=localStorage.getI
 export function StartupWarmup({children}:{children:React.ReactNode}){
  const desktop=isTauriDesktop();const[ready,setReady]=useState(!desktop);const[message,setMessage]=useState('Starting Onyx…');
  useEffect(()=>{
+  const status=(event:Event)=>{const next=(event as CustomEvent<{message?:string}>).detail?.message;if(next)setMessage(next)};
+  const appReady=()=>setMessage('Finalizing Onyx…');
+  window.addEventListener('onyx-startup-status',status);window.addEventListener('onyx-app-ready',appReady);
+  return()=>{window.removeEventListener('onyx-startup-status',status);window.removeEventListener('onyx-app-ready',appReady)};
+ },[]);
+ useEffect(()=>{
   if(!desktop){setReady(true);return}
   let disposed=false;const started=Date.now();
   const finish=()=>{if(disposed)return;const wait=Math.max(0,MIN_VISIBLE_MS-(Date.now()-started));window.setTimeout(()=>{if(!disposed)setReady(true)},wait)};

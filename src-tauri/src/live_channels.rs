@@ -330,13 +330,16 @@ pub fn live_channels_set_artwork(user_id: String, channel_id: String, path: Stri
 }
 
 #[tauri::command]
-pub fn live_channels_guide(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<GuideChannel>, String> {
-    activity::info("Live TV", "Building live guide");
-    let media = enriched_user_media(&state, &user_id)?;
-    let playlists = database::list_playlists(&state.database_path, &user_id)?;
-    let rows = guide(&state.provider_path, &user_id, &media, &playlists, None)?;
-    activity::info("Live TV", format!("Live guide ready: {} channels", rows.len()));
-    Ok(rows)
+pub async fn live_channels_guide(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<GuideChannel>, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        activity::info("Live TV", "Building live guide");
+        let media = enriched_user_media(&shared, &user_id)?;
+        let playlists = database::list_playlists(&shared.database_path, &user_id)?;
+        let rows = guide(&shared.provider_path, &user_id, &media, &playlists, None)?;
+        activity::info("Live TV", format!("Live guide ready: {} channels", rows.len()));
+        Ok(rows)
+    }).await.map_err(|error| format!("Live guide worker failed: {error}"))?
 }
 
 #[cfg(test)]

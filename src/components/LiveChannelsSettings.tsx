@@ -3,14 +3,18 @@ import { Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, X } from 'lucide-re
 import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
 import type { LiveChannel, LiveChannelCriteria, LiveChannelOrder, MediaItem, Playlist } from '../types';
 
+type ShowChoice={title:string;posterUrl?:string;episodeCount:number};
 type WarmCriteria={shows:string[];genres:string[];playlists:Playlist[]};
 const readWarmCriteria=():WarmCriteria|undefined=>{try{const raw=sessionStorage.getItem(`onyx-live-criteria:${getActiveUserId()}`);return raw?JSON.parse(raw) as WarmCriteria:undefined}catch{return undefined}};
+const readShowChoices=():ShowChoice[]=>{try{const raw=sessionStorage.getItem(`onyx-live-shows:${getActiveUserId()}`);return raw?JSON.parse(raw) as ShowChoice[]:[]}catch{return[]}};
 
 export function LiveChannelsSettings(){
   const desktop=isTauriDesktop();
   const warm=useMemo(()=>readWarmCriteria(),[]);
   const[channels,setChannels]=useState<LiveChannel[]>([]);
   const[media,setMedia]=useState<MediaItem[]>([]);
+  const[showChoices,setShowChoices]=useState<ShowChoice[]>(()=>readShowChoices());
+  const[showQuery,setShowQuery]=useState('');
   const[playlists,setPlaylists]=useState<Playlist[]>(warm?.playlists??[]);
   const[editingId,setEditingId]=useState<string|undefined>();
   const[name,setName]=useState('');
@@ -26,14 +30,16 @@ export function LiveChannelsSettings(){
     try{
       const saved=await listLiveChannels();setChannels(saved);setError(null);
       if(!warm)setCriteriaBusy(true);
-      const[m,p]=await Promise.all([listMedia(),listPlaylists()]);setMedia(m);setPlaylists(p);
+      const p=await listPlaylists();setPlaylists(p);
+      if(showChoices.length===0){const m=await listMedia();setMedia(m);const map=new Map<string,ShowChoice>();for(const item of m){if(item.kind!=='episode'||!item.showTitle)continue;const current=map.get(item.showTitle);map.set(item.showTitle,{title:item.showTitle,posterUrl:current?.posterUrl??item.posterUrl??item.thumbnailUrl,episodeCount:(current?.episodeCount??0)+1})}setShowChoices([...map.values()].sort((a,b)=>a.title.localeCompare(b.title)))}
     }catch(cause){setError(String(cause))}finally{setCriteriaBusy(false)}
   };
   useEffect(()=>{void refresh()},[]);
 
-  const shows=useMemo(()=>media.length?[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b)):(warm?.shows??[]),[media,warm]);
+  const shows=useMemo(()=>showChoices.length?showChoices.map(show=>show.title):media.length?[...new Set(media.filter(item=>item.kind==='episode').map(item=>item.showTitle).filter((value):value is string=>Boolean(value)))].sort((a,b)=>a.localeCompare(b)):(warm?.shows??[]),[media,warm,showChoices]);
   const genres=useMemo(()=>media.length?[...new Set(media.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b)):(warm?.genres??[]),[media,warm]);
   const multiOptions=criteriaType==='show'?shows:genres;
+  const visibleShowChoices=useMemo(()=>showChoices.filter(show=>!showQuery.trim()||show.title.toLowerCase().includes(showQuery.trim().toLowerCase())),[showChoices,showQuery]);
   const selectedCount=criteriaType==='playlist'?(playlistValue?1:0):selectedValues.length;
 
   useEffect(()=>{
@@ -47,7 +53,7 @@ export function LiveChannelsSettings(){
   const toggleValue=(value:string)=>setSelectedValues(current=>current.includes(value)?current.filter(item=>item!==value):[...current,value]);
   const resetBuilder=()=>{setEditingId(undefined);setName('');setCriteriaType('show');setSelectedValues([]);setPlaylistValue(playlists[0]?.id??'');setOrderMode('sequential')};
   const edit=(channel:LiveChannel)=>{setEditingId(channel.id);setName(channel.name);setCriteriaType(channel.criteriaType);setOrderMode(channel.orderMode);if(channel.criteriaType==='playlist'){setPlaylistValue(channel.criteriaValue);setSelectedValues([])}else setSelectedValues(channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean))};
-  const saveChannel=async()=>{if(!name.trim()||selectedCount===0||!desktop)return;setBusy(true);setError(null);try{setChannels(await saveLiveChannel({id:editingId,name:name.trim(),criteriaType,criteriaValue:criteriaType==='playlist'?playlistValue:selectedValues[0],criteriaValues:criteriaType==='playlist'?[playlistValue]:selectedValues,orderMode}));resetBuilder()}catch(cause){setError(String(cause))}finally{setBusy(false)}};
+  const saveChannel=async()=>{if(!name.trim()||selectedCount===0||!desktop)return;setBusy(true);setError(null);try{setChannels(await saveLiveChannel({id:editingId,name:name.trim(),criteriaType,criteriaValue:criteriaType==='playlist'?playlistValue:selectedValues[0],criteriaValues:criteriaType==='playlist'?[playlistValue]:selectedValues,orderMode}));localStorage.removeItem(`onyx-live-guide:${getActiveUserId()}`);resetBuilder()}catch(cause){setError(String(cause))}finally{setBusy(false)}};
   const remove=async(channel:LiveChannel)=>{if(!desktop||!window.confirm(`Delete channel “${channel.name}”?`))return;try{setChannels(await deleteLiveChannel(channel.id));if(editingId===channel.id)resetBuilder()}catch(cause){setError(String(cause))}};
   const art=async(channel:LiveChannel)=>{if(!desktop)return;const path=await chooseLiveChannelArtwork();if(!path)return;try{setChannels(await setLiveChannelArtwork(channel.id,path))}catch(cause){setError(String(cause))}};
   const channelSummary=(channel:LiveChannel)=>{if(channel.criteriaType==='playlist')return playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist';const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);return values.length<=3?values.join(', '):`${values.slice(0,3).join(', ')} +${values.length-3} more`};
@@ -61,7 +67,7 @@ export function LiveChannelsSettings(){
       <div className="live-builder-grid">
         <label><span>Channel name</span><input value={name} onChange={event=>setName(event.target.value)} placeholder="Star Wars"/></label>
         <label><span>Content</span><select value={criteriaType} onChange={event=>setCriteriaType(event.target.value as LiveChannelCriteria)}><option value="show">TV shows</option><option value="genre">Genres</option><option value="playlist">Playlist</option></select></label>
-        {criteriaType==='playlist'?<label><span>Playlist</span><select value={playlistValue} onChange={event=>setPlaylistValue(event.target.value)} disabled={!playlists.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:playlists.length?playlists.map(playlist=><option value={playlist.id} key={playlist.id}>{playlist.name}</option>):<option value="">No playlists</option>}</select></label>:<div className="live-multi-field"><span>{criteriaType==='show'?'Shows':'Genres'} <small>{selectedValues.length} selected</small></span><div className="live-multi-options">{criteriaBusy&&multiOptions.length===0?<div className="live-multi-empty">Loading choices…</div>:multiOptions.length?multiOptions.map(value=><button type="button" key={value} className={selectedValues.includes(value)?'selected':''} onClick={()=>toggleValue(value)}>{selectedValues.includes(value)&&<Check size={14}/>}<span>{value}</span></button>):<div className="live-multi-empty">No matching content</div>}</div></div>}
+        {criteriaType==='playlist'?<label><span>Playlist</span><select value={playlistValue} onChange={event=>setPlaylistValue(event.target.value)} disabled={!playlists.length||criteriaBusy}>{criteriaBusy?<option value="">Loading choices…</option>:playlists.length?playlists.map(playlist=><option value={playlist.id} key={playlist.id}>{playlist.name}</option>):<option value="">No playlists</option>}</select></label>:criteriaType==='show'?<div className="live-show-picker"><div className="live-show-picker-head"><span>TV shows <small>{selectedValues.length} selected</small></span><input value={showQuery} onChange={event=>setShowQuery(event.target.value)} placeholder="Find a show"/></div><div className="live-show-choice-grid">{visibleShowChoices.map(show=><button type="button" key={show.title} className={selectedValues.includes(show.title)?'selected':''} onClick={()=>toggleValue(show.title)}>{show.posterUrl?<img src={resolveMediaUrl(show.posterUrl)} alt=""/>:<span className="live-show-placeholder">{show.title.charAt(0)}</span>}<span className="live-show-check">{selectedValues.includes(show.title)&&<Check size={15}/>}</span><strong>{show.title}</strong><small>{show.episodeCount} episodes</small></button>)}</div></div>:<div className="live-multi-field"><span>Genres <small>{selectedValues.length} selected</small></span><div className="live-multi-options">{criteriaBusy&&multiOptions.length===0?<div className="live-multi-empty">Loading choices…</div>:multiOptions.length?multiOptions.map(value=><button type="button" key={value} className={selectedValues.includes(value)?'selected':''} onClick={()=>toggleValue(value)}>{selectedValues.includes(value)&&<Check size={14}/>}<span>{value}</span></button>):<div className="live-multi-empty">No matching content</div>}</div></div>}
         <label><span>Playback order</span><select value={orderMode} onChange={event=>setOrderMode(event.target.value as LiveChannelOrder)}><option value="sequential">In order</option><option value="shuffle">Shuffled</option></select></label>
       </div>
       {criteriaType!=='playlist'&&selectedValues.length>0&&<div className="live-selected-chips">{selectedValues.map(value=><button type="button" key={value} onClick={()=>toggleValue(value)}>{value}<X size={13}/></button>)}</div>}

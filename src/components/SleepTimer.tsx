@@ -66,7 +66,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
   }, [until]);
   const choose = (minutes: number) => {
     if (!minutes) { update(0); return; }
-    prepareLofi(); void audioContext?.resume(); update(Date.now() + minutes * 60_000);
+    prepareLofi(); void audioContext?.resume(); update(minutes < 0 ? Date.now() : Date.now() + minutes * 60_000);
   };
   const wake = () => { setSleeping(false); setLofiVolume(0); };
   const remainingMinutes = Math.max(0, (until - Date.now()) / 60_000);
@@ -76,7 +76,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
       <Moon size={projector ? 17 : 18} />
       <span>{projector ? 'Sleep' : 'Sleep timer'}</span>
       <select value={selectedDuration} onChange={event => choose(Number(event.target.value))}>
-        <option value="">Off</option><option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option>
+        <option value="">Off</option><option value="-1">Now</option><option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option>
       </select>
     </label>
     {sleeping && <div className="sleep-scene" role="dialog" aria-label="Sleep mode">

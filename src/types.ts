@@ -1,4 +1,4 @@
-export type MediaKind = "movie" | "episode";
+export type MediaKind = "movie" | "episode" | "special";
 export type PlaybackMode = "directPlay" | "remux" | "transcode";
 export type ThemeName =
   | "onyx"

@@ -56,7 +56,9 @@ const formatTime = (seconds: number) => {
 };
 const socialKey = (item: MediaItem) => item.metadataEntityId ?? (item.provider && item.providerId ? `${item.provider}:${item.providerId}` : `media:${item.id}`);
 const profileSlug=(name:string)=>name.trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-const requestedProfileSlug=()=>window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase();
+const routeSlug=()=>window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase()??'';
+const projectorProfileSlug=()=>routeSlug().startsWith('live-')?routeSlug().slice(5):undefined;
+const requestedProfileSlug=()=>(projectorProfileSlug()??routeSlug())||undefined;
 const numberPrompt = (label: string, current?: number) => {
   const value = window.prompt(label, current == null ? '' : String(current));
   if (value == null) return undefined;
@@ -142,6 +144,7 @@ function MetadataSummary({ item }: { item: MediaItem }) {
 
 function App() {
   const isDesktop = isTauriDesktop();
+  const projectorMode = !isDesktop && Boolean(projectorProfileSlug());
   const dialog = useOnyxDialog();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [hiddenItems, setHiddenItems] = useState<MediaItem[]>([]);
@@ -155,7 +158,7 @@ function App() {
   const [, setThemeState] = useState<ThemeName>('onyx');
   const [splitContinueWatching, setSplitContinueWatching] = useState(false);
   const [query, setQuery] = useState('');
-  const [section, setSection] = useState<Section>('home');
+  const [section, setSection] = useState<Section>(projectorMode ? 'live' : 'home');
   const [tvView, setTvView] = useState<TvView>('season');
   const [selectedShowTitle, setSelectedShowTitle] = useState<string | null>(null);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
@@ -293,7 +296,10 @@ function App() {
     <button className={section === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}><Settings size={19} />Settings</button>
   </aside>;
 
-  const shell = <div className={`app-shell ${isDesktop ? 'desktop-shell' : ''}`}>
+  const shell = projectorMode ? <div className="projector-shell">
+    {error && <div className="error-banner">{error}</div>}
+    {activeUser?<LiveChannelsView media={items} onOpenSettings={() => undefined} projector userName={activeUser.name} />:<div className="live-empty">Loading profile…</div>}
+  </div> : <div className={`app-shell ${isDesktop ? 'desktop-shell' : ''}`}>
     <header className="topbar"><button className="brand brand-button" onClick={() => navigate('home')}><span className="brand-mark">O</span><span>Onyx</span></button>{selected ? <div className="now-playing-title">{selected.kind === 'episode' ? selected.showTitle : selected.title}</div> : section === 'music' || section === 'live' || section === 'settings' ? <div /> : <div className="search"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search Onyx" /></div>}<div className="topbar-right"><button className={`server-logo-status ${status.running ? 'online' : ''}`} title={`${status.running ? 'Connected' : 'Disconnected'} · ${status.localUrl}\nClick to copy`} aria-label={`${status.running ? 'Connected to' : 'Disconnected from'} ${status.localUrl}. Click to copy.`} onClick={() => void navigator.clipboard.writeText(status.localUrl)}><img src="/app-icon.png" alt="" /></button><div className="profile-wrap"><button className="profile-button" onClick={event => { event.stopPropagation(); setProfileMenu(v => !v); }}>{activeUser?.name ?? 'User'}<ChevronDown size={14} /></button>{profileMenu && <div className="profile-menu" onClick={event => event.stopPropagation()}><div className="profile-label">Profiles</div>{users.map(user => <button key={user.id} className={user.id === activeUserId ? 'active' : ''} onClick={() => void switchUser(user.id)}><AvatarBadge avatar={avatars[user.id]} name={user.name} size="sm" />{user.name}{user.isAdmin && <small>Owner</small>}</button>)}<div className="context-separator" /><button onClick={() => void openHidden()}><EyeOff size={15} />Hidden media</button>{!isDesktop && <button onClick={() => void signOut()}><LogOut size={15} />Sign out</button>}</div>}</div></div></header>
     {sidebar}
     {selected ? <main className="content player-content"><section className="player-page" style={selected.backdropUrl ? { backgroundImage: `linear-gradient(rgba(4,6,8,.82),rgba(4,6,8,.98)),url(${resolveMediaUrl(selected.backdropUrl)})` } : undefined}><div className="player-page-header"><button className="back-button" data-player-back onClick={closePlayer}><ArrowLeft size={18} />Back</button><div><p className="eyebrow">{selected.kind === 'episode' ? selected.showTitle : 'MOVIE'}</p><h1>{selected.title}</h1><p>{selected.kind === 'episode' ? episodeLabel(selected) : selected.year ?? ''}</p><MetadataSummary item={selected} />{isDesktop && selected.kind === 'movie' && <SocialBar targetType="movie" targetKey={socialKey(selected)} title={selected.title} posterUrl={selected.posterUrl} users={users} />}</div></div><div className="video-stage"><video ref={videoRef} controls autoPlay preload="auto" onPause={() => void saveProgress(true)} onTimeUpdate={() => void saveProgress()}><source src={resolveMediaUrl(selected.streamUrl)} />{playableSubtitles.map(subtitle => <track key={subtitle.url} kind="subtitles" src={resolveMediaUrl(subtitle.url)} srcLang={subtitle.language} label={subtitle.label} />)}</video></div><div className="player-toolbar"><div className="player-meta">{[selected.container, selected.videoCodec, selected.audioCodec, selected.height ? `${selected.height}p` : null].filter(Boolean).join(' · ')}</div><label className="subtitle-control"><Subtitles size={18} /><span>Subtitles</span><select value={subtitleChoice} onChange={event => changeSubtitle(event.target.value)}><option value="off">Off</option>{playableSubtitles.map((subtitle, index) => <option key={subtitle.url} value={String(index)}>{subtitle.label}{subtitle.forced ? ' · Forced' : ''}</option>)}</select></label></div></section></main> : <main className="content">

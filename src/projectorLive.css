@@ -1,0 +1,17 @@
+.projector-shell{min-height:100vh;background:var(--bg);padding:0 4vw 5vh}
+.projector-live-page{max-width:1500px;margin:auto}
+.projector-live-page .live-header{padding-top:3vh}
+.projector-live-page .live-player-card{grid-template-columns:minmax(280px,.7fr) minmax(520px,1.3fr)}
+.projector-live-page .live-video video{max-height:52vh}
+.projector-fullscreen{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:12px;padding:14px;border:2px solid var(--line);background:var(--panel2);color:var(--text);font-size:1rem;font-weight:800}
+.projector-channel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;margin-top:20px}
+.projector-channel{display:grid;grid-template-columns:130px minmax(0,1fr);gap:16px;align-items:center;min-height:104px;padding:10px;border:2px solid var(--line);background:var(--panel);color:var(--text);text-align:left}
+.projector-channel:hover,.projector-channel:focus-visible{outline:4px solid var(--accent);outline-offset:2px;background:var(--panel3)}
+.projector-channel.tuned{border-color:var(--accent-strong)}
+.projector-channel img,.projector-channel-placeholder{width:130px;height:82px;object-fit:cover;background:var(--panel3);display:grid;place-items:center;color:var(--accent)}
+.projector-channel>span:last-child{min-width:0}
+.projector-channel strong,.projector-channel b,.projector-channel small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.projector-channel strong{color:var(--accent);font-size:.83rem;text-transform:uppercase;letter-spacing:.07em}
+.projector-channel b{margin-top:6px;font-size:1.08rem}
+.projector-channel small{margin-top:5px;color:var(--muted);font-size:.82rem}
+@media(max-width:760px){.projector-shell{padding:0 18px 30px}.projector-live-page .live-player-card{grid-template-columns:1fr}.projector-channel-grid{grid-template-columns:1fr}.projector-channel{grid-template-columns:105px 1fr}.projector-channel img,.projector-channel-placeholder{width:105px;height:68px}}

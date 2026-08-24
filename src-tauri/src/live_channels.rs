@@ -1,4 +1,4 @@
-use crate::{activity, database, metadata, metadata_view, models::{MediaItem, Playlist}, Shared};
+use crate::{activity, database, metadata, models::{MediaItem, Playlist}, Shared};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -309,7 +309,8 @@ fn enriched_user_media(state: &crate::app_state::AppState, user_id: &str) -> Res
     if !database::user_exists(&state.database_path, user_id) { return Err("Unknown Onyx user".into()); }
     let mut items = state.media.read().map_err(|_| "Media lock poisoned")?.clone();
     metadata::enrich_media(&state.database_path, &mut items)?;
-    metadata_view::canonicalize(&state.database_path, &mut items)?;
+    // Guide generation only needs enriched titles, genres, and artwork. Full
+    // canonicalization performs additional per-item lookups and made first load slow.
     let (hidden_media, hidden_shows) = database::hidden_sets(&state.database_path, user_id)?;
     items.retain(|item| {
         !hidden_media.contains(&item.id)

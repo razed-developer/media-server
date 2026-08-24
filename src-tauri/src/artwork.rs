@@ -12,6 +12,7 @@ fn show_key(item: &MediaItem) -> String { safe_key(item.show_title.as_deref().un
 pub fn cache_path(cache_root: &Path, item: &MediaItem, kind: &str) -> PathBuf {
     match (item.kind.as_str(), kind) {
         ("episode", "thumbnail") => cache_root.join("tv").join(show_key(item)).join("episodes").join(format!("{}.webp", item.id)),
+        ("special", "thumbnail") => cache_root.join("specials").join(&item.id).join("thumbnail.webp"),
         ("episode", _) => cache_root.join("tv").join(show_key(item)).join(format!("{kind}.webp")),
         (_, _) => cache_root.join("movies").join(&item.id).join(format!("{kind}.webp")),
     }
@@ -37,7 +38,7 @@ fn local_image(item: &MediaItem, kind: &str) -> Option<PathBuf> {
             let show_root = if parent_name.starts_with("season") || (parent_name.starts_with('s') && parent_name[1..].chars().all(|c| c.is_ascii_digit())) { parent.parent() } else { Some(parent) };
             if let Some(show_root) = show_root { for name in ["backdrop", "fanart", "background"] { for ext in IMAGE_EXTENSIONS { candidates.push(show_root.join(format!("{name}.{ext}"))); } } }
         }
-    } else if kind == "thumbnail" && item.kind == "episode" {
+    } else if kind == "thumbnail" && (item.kind == "episode" || item.kind == "special") {
         for ext in IMAGE_EXTENSIONS { candidates.push(parent.join(format!("{stem}-thumb.{ext}"))); candidates.push(parent.join(format!("{stem}.thumb.{ext}"))); }
     }
     candidates.into_iter().find(|candidate| candidate.is_file())
@@ -75,7 +76,7 @@ pub fn ensure(cache_root: &Path, item: &MediaItem, kind: &str) -> Option<PathBuf
         if normalize(&source, &destination, width, height) { return Some(destination); }
         return Some(source);
     }
-    if item.kind == "episode" {
+    if item.kind == "episode" || item.kind == "special" {
         if kind == "thumbnail" && generate_frame(item, &destination, 480, 270, 72) { return Some(destination); }
         if kind == "poster" && generate_frame(item, &destination, 400, 600, 72) { return Some(destination); }
         if kind == "backdrop" && generate_frame(item, &destination, 1280, 720, 72) { return Some(destination); }

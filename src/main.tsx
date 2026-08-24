@@ -35,6 +35,7 @@ import './playbackContinuity.css';
 import './startupWarmup.css';
 import './continuityPolish.css';
 import './socialDiscovery.css';
+import './sleepTimer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

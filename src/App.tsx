@@ -21,6 +21,7 @@ import { preloadMusicLibrary } from './musicLibraryCache';
 import { RecommendationsRail } from './components/RecommendationsRail';
 import { SettingsPage } from './components/SettingsPage';
 import { SocialBar } from './components/SocialBar';
+import { SleepTimer } from './components/SleepTimer';
 import { AvatarBadge } from './components/UserAvatarPicker';
 import { useOnyxDialog } from './components/OnyxDialogProvider';
 
@@ -208,6 +209,15 @@ function App() {
 
   const movies = useMemo(() => items.filter(i => i.kind === 'movie'), [items]);
   const specials = useMemo(() => items.filter(i => i.kind === 'special'), [items]);
+  const specialGroups = useMemo(() => {
+    const groups = new Map<string, MediaItem[]>();
+    for (const item of specials) {
+      const parts = item.path.replace(/\\/g, '/').split('/').filter(Boolean);
+      const folder = parts.length > 1 ? parts[parts.length - 2] : 'Unsorted';
+      groups.set(folder, [...(groups.get(folder) ?? []), item]);
+    }
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, values]) => ({ folder, values }));
+  }, [specials]);
   const episodes = useMemo(() => items.filter(i => i.kind === 'episode').sort((a, b) => (a.showTitle ?? '').localeCompare(b.showTitle ?? '') || (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0)), [items]);
   const makeShows = (source: MediaItem[]) => {
     const grouped = new Map<string, MediaItem[]>();
@@ -295,11 +305,13 @@ function App() {
     <button className={section === 'analytics' ? 'active' : ''} onClick={() => navigate('analytics')}><BarChart3 size={19} />Analytics</button>
     <div className="sidebar-spacer" />
     {pausedMedia && <button className="sidebar-resume" onClick={resumePaused} title={`Resume ${pausedMedia.title}`}><Play size={16} fill="currentColor" /><span><small>Resume</small>{pausedMedia.kind === 'episode' ? pausedMedia.showTitle ?? pausedMedia.title : pausedMedia.title}</span></button>}
+    <SleepTimer />
     <button className={section === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}><Settings size={19} />Settings</button>
   </aside>;
 
   const shell = projectorMode ? <div className="projector-shell">
     {error && <div className="error-banner">{error}</div>}
+    <SleepTimer projector />
     {activeUser?<LiveChannelsView media={items} onOpenSettings={() => undefined} projector userName={activeUser.name} />:<div className="live-empty">Loading profile…</div>}
   </div> : <div className={`app-shell ${isDesktop ? 'desktop-shell' : ''}`}>
     <header className="topbar"><button className="brand brand-button" onClick={() => navigate('home')}><span className="brand-mark">O</span><span>Onyx</span></button>{selected ? <div className="now-playing-title">{selected.kind === 'episode' ? selected.showTitle : selected.title}</div> : section === 'music' || section === 'live' || section === 'settings' ? <div /> : <div className="search"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search Onyx" /></div>}<div className="topbar-right"><button className={`server-logo-status ${status.running ? 'online' : ''}`} title={`${status.running ? 'Connected' : 'Disconnected'} · ${status.localUrl}\nClick to copy`} aria-label={`${status.running ? 'Connected to' : 'Disconnected from'} ${status.localUrl}. Click to copy.`} onClick={() => void navigator.clipboard.writeText(status.localUrl)}><img src="/app-icon.png" alt="" /></button><div className="profile-wrap"><button className="profile-button" onClick={event => { event.stopPropagation(); setProfileMenu(v => !v); }}>{activeUser?.name ?? 'User'}<ChevronDown size={14} /></button>{profileMenu && <div className="profile-menu" onClick={event => event.stopPropagation()}><div className="profile-label">Profiles</div>{users.map(user => <button key={user.id} className={user.id === activeUserId ? 'active' : ''} onClick={() => void switchUser(user.id)}><AvatarBadge avatar={avatars[user.id]} name={user.name} size="sm" />{user.name}{user.isAdmin && <small>Owner</small>}</button>)}<div className="context-separator" /><button onClick={() => void openHidden()}><EyeOff size={15} />Hidden media</button>{!isDesktop && <button onClick={() => void signOut()}><LogOut size={15} />Sign out</button>}</div>}</div></div></header>
@@ -310,7 +322,7 @@ function App() {
       {section === 'movies' && <><PageHero eyebrow="MOVIES" title="Movies" subtitle={`${movies.length} titles`} /><section className="gallery">{visibleMovies.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
       {section === 'tv' && !selectedShow && <><PageHero eyebrow="TELEVISION" title="TV Shows" subtitle={`${shows.length} shows · ${episodes.length} episodes`} /><section className="gallery show-gallery">{visibleShows.map(show => <ShowCard key={show.title} show={show} onOpen={value => { setSelectedShowTitle(value.title); setQuery(''); }} onMenu={(e, v) => openMenu(e, { type: 'show', show: v })} />)}</section></>}
       {section === 'tv' && selectedShow && <><section className="show-hero compact-hero" style={showBackdrop ? { backgroundImage: `linear-gradient(90deg,var(--bg) 0%,rgba(5,7,10,.80) 60%),url(${resolveMediaUrl(showBackdrop)})` } : undefined}><div><button className="back-button" onClick={() => { setSelectedShowTitle(null); setQuery(''); }}><ArrowLeft size={18} />All TV shows</button><p className="eyebrow">TV SHOW</p><h1>{selectedShow.title}</h1><p>{selectedShow.seasons} seasons · {selectedShow.episodes.length} episodes {allWatched(selectedShow.episodes) ? '· Watched' : ''}</p><MetadataSummary item={selectedShow.representative} />{isDesktop && <SocialBar targetType="show" targetKey={showSocialKey} title={selectedShow.title} posterUrl={selectedShow.representative.posterUrl} users={users} />}</div><div className="view-toggle"><button className={tvView === 'season' ? 'active' : ''} onClick={() => setTvView('season')}><Layers3 size={17} />By season</button><button className={tvView === 'list' ? 'active' : ''} onClick={() => setTvView('list')}><List size={17} />All episodes</button></div></section>{tvView === 'list' ? <section className="gallery episode-grid">{showEpisodes.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section> : <div className="season-groups">{seasonGroups.map(group => <section className="season-section" key={group.season}><div className="season-heading" onContextMenu={e => openMenu(e, { type: 'season', showTitle: selectedShow.title, season: group.season, items: group.items })}><div><p>{selectedShow.title}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`} {allWatched(group.items) && <Check size={18} />}</h2><ProgressLine value={groupPercent(group.items)} /></div><span>{group.items.length} episodes</span></div><div className="gallery">{group.items.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</div></section>)}</div>}</>}
-      {section === 'specials' && <><PageHero eyebrow="SPECIALS" title="Specials & Documentaries" subtitle={`${specials.length} files`} /><section className="gallery episode-grid">{specials.map(item => <MediaCard key={item.id} item={item} artwork="thumbnail" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
+      {section === 'specials' && <><PageHero eyebrow="SPECIALS" title="Specials & Documentaries" subtitle={`${specials.length} files`} /><div className="season-groups">{specialGroups.map(group => <section className="season-section" key={group.folder}><div className="season-heading"><div><p>SPECIALS</p><h2>{group.folder}</h2></div><span>{group.values.length} {group.values.length === 1 ? 'file' : 'files'}</span></div><div className="gallery episode-grid">{group.values.map(item => <MediaCard key={item.id} item={item} artwork="thumbnail" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</div></section>)}</div></>}
       {section === 'live' && <LiveChannelsView media={items} onOpenSettings={() => navigate('settings')} />}
       {section === 'music' && <MusicView />}
       {section === 'history' && <><PageHero eyebrow="HISTORY" title="Recently watched" subtitle={`${historyItems.length} items`} /><section className="gallery">{visibleHistory.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}

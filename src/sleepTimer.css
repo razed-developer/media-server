@@ -1,0 +1,12 @@
+.sleep-timer{display:flex;align-items:center;gap:9px;margin:0 2px 4px;padding:8px 10px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+.sleep-timer span{flex:1;white-space:nowrap}.sleep-timer select{min-width:73px;padding:5px 7px;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+.projector-sleep-timer{position:fixed;z-index:45;top:20px;right:116px;margin:0;padding:7px 9px;border:1px solid color-mix(in srgb,var(--text) 15%,transparent);background:color-mix(in srgb,var(--bg) 84%,transparent);backdrop-filter:blur(12px)}
+.sleep-scene{position:fixed;z-index:10000;inset:0;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle at 50% 115%,#17264d 0,#080d21 35%,#02040c 72%);color:#eef4ff}
+.sleep-scene::after{content:"";position:absolute;inset:auto -10% -28% -10%;height:48%;border-radius:50% 50% 0 0;background:linear-gradient(#101a31,#040812);box-shadow:0 -20px 90px #1b3c6a66}
+.sleep-stars,.sleep-stars::before,.sleep-stars::after{position:absolute;inset:0;content:"";background-image:radial-gradient(circle,#fff 0 1px,transparent 1.6px);background-size:73px 81px;opacity:.65;animation:sleep-drift 45s linear infinite}
+.sleep-stars::before{transform:translate(29px,17px);background-size:113px 97px;opacity:.5}.sleep-stars::after{transform:translate(9px,51px);background-size:157px 131px;opacity:.35}
+.sleep-stars-far{transform:scale(.8);filter:blur(.3px);opacity:.35;animation-duration:75s}
+.sleep-moon{position:absolute;top:12%;right:14%;width:min(18vw,210px);aspect-ratio:1;border-radius:50%;background:#eef3d0;box-shadow:0 0 45px #dbe8b880,0 0 140px #8fb3ff3d}
+.sleep-message{position:relative;z-index:2;text-align:center;text-shadow:0 2px 20px #000}.sleep-message small{letter-spacing:.28em;color:#a9bfed}.sleep-message h1{margin:12px 0 8px;font-size:clamp(3rem,8vw,7rem);font-weight:300;letter-spacing:-.05em}.sleep-message p{color:#b8c6df}.sleep-message button{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:11px 17px;border:1px solid #8eabd0;background:#101b32cc;color:#eef4ff}
+@keyframes sleep-drift{to{transform:translateY(81px)}}
+@media(max-width:850px){.sleep-timer span{display:none}.sleep-timer{padding-inline:2px;justify-content:center}.sleep-timer svg{display:none}.sleep-timer select{min-width:58px;font-size:10px}.projector-sleep-timer{right:74px}.projector-sleep-timer span,.projector-sleep-timer svg{display:block}}

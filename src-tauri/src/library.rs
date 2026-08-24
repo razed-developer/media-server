@@ -21,8 +21,8 @@ pub fn scan(
     // Reuse IDs for paths already known to the database. This preserves watch
     // history, playlists, matches, and Onyx-managed subtitles after a restored
     // library root has been remapped to a new drive or parent directory.
-    let existing_ids: std::collections::HashMap<String, String> = database::load_library(database_path)
-        .unwrap_or_default().into_iter().map(|item| (item.path, item.id)).collect();
+    let existing: std::collections::HashMap<String, MediaItem> = database::load_library(database_path)
+        .unwrap_or_default().into_iter().map(|item| (item.path.clone(), item)).collect();
     let mut video_paths = Vec::new();
 
     progress("discovering", 0, 0, Some(root));
@@ -42,7 +42,20 @@ pub fn scan(
         let extension = path.extension().and_then(|value| value.to_str()).unwrap_or_default().to_lowercase();
         if !VIDEO_EXTENSIONS.contains(&extension.as_str()) { continue; }
         let path_text = path.to_string_lossy().to_string();
-        let id = existing_ids.get(&path_text).cloned().unwrap_or_else(|| make_id(path));
+        if let Some(previous) = existing.get(&path_text) {
+            // Directory discovery is cheap; ffprobe is not. Reuse complete records
+            // for paths already in the library so ordinary scans only inspect new files.
+            if previous.duration_seconds.is_some() && previous.container.is_some() {
+                let mut item = previous.clone();
+                if item.kind == "special" && item.thumbnail_url.is_none() {
+                    item.thumbnail_url = Some(format!("/art/{}/thumbnail", item.id));
+                }
+                media.push(item);
+                progress("inspecting", discovered, index + 1, Some(path));
+                continue;
+            }
+        }
+        let id = existing.get(&path_text).map(|item| item.id.clone()).unwrap_or_else(|| make_id(path));
         let parsed = match kind_hint {
             Some("movie") => naming::parse_movie(path),
             Some("episode") => naming::parse_tv(path),
@@ -78,7 +91,7 @@ pub fn scan(
             stream_url: format!("/play/{id}"),
             poster_url: (!is_special).then(|| format!("/art/{id}/poster")),
             backdrop_url: (!is_special).then(|| format!("/art/{id}/backdrop")),
-            thumbnail_url: is_episode.then(|| format!("/art/{id}/thumbnail")),
+            thumbnail_url: (is_episode || is_special).then(|| format!("/art/{id}/thumbnail")),
             subtitles,
             progress_seconds: 0,
             duration_seconds: info.duration_seconds,

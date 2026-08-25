@@ -5,6 +5,7 @@ mod assets;
 mod backup;
 mod commands;
 mod child_process;
+mod collection_sources;
 mod captions;
 mod database;
 mod household_feed;
@@ -61,12 +62,13 @@ pub fn run() {
     let phase=Instant::now();
     let initial_media = database::load_library(&database_path).unwrap_or_default();
     activity::info("Performance",format!("Startup library load: {} ms for {} items",phase.elapsed().as_millis(),initial_media.len()));
-    let metadata_media = initial_media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
+    let metadata_media = initial_media.iter().filter(|item| item.kind != "special" && item.kind != "collection").cloned().collect::<Vec<_>>();
     activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
         settings: Arc::new(RwLock::new(load_settings(&settings_path))),
         media: Arc::new(RwLock::new(initial_media)), sessions: Arc::new(RwLock::new(HashMap::new())),
+        collection_unlocks: Arc::new(RwLock::new(HashMap::new())),
         scan_progress: Arc::new(RwLock::new(ScanProgress::default())),
         captions: captions::CaptionRuntime::default(),
     });
@@ -102,6 +104,7 @@ pub fn run() {
             commands::set_library_path, commands::set_movie_path, commands::set_tv_path,
             commands::add_movie_path, commands::add_tv_path, commands::remove_movie_path, commands::remove_tv_path,
             commands::add_special_path, commands::remove_special_path,
+            commands::collection_source_save, commands::collection_source_delete,
             commands::configure_library_root,
             commands::set_access_password, commands::clear_access_password,
             commands::funnel_status, commands::set_funnel_enabled,
@@ -127,6 +130,8 @@ pub fn run() {
             captions::caption_status, captions::caption_configure,
             captions::caption_generate, captions::caption_generate_missing,
             sleep_videos::sleep_video_status, sleep_videos::sleep_video_configure,
+            collection_sources::collection_sources_list, collection_sources::collection_source_unlock,
+            collection_sources::collection_source_touch, collection_sources::collection_source_lock,
             user_features::user_avatars, user_features::user_avatar_set_builtin,
             user_features::user_avatar_set_custom, user_features::user_reactions,
             user_features::user_reaction_set, user_features::user_recommendation_send,

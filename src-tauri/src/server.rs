@@ -6,7 +6,7 @@ use crate::{
 use argon2::{password_hash::{PasswordHash, PasswordVerifier}, Argon2};
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, Request, State},
+    extract::{Path as AxumPath, Query, Request, State},
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
@@ -15,7 +15,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{io::SeekFrom, net::SocketAddr, path::{Path, PathBuf}, process::Stdio, time::{SystemTime, UNIX_EPOCH}};
+use std::{collections::HashMap,io::SeekFrom, net::SocketAddr, path::{Path, PathBuf}, process::Stdio, time::{SystemTime, UNIX_EPOCH}};
 use tokio::{fs::File, io::{AsyncReadExt, AsyncSeekExt}};
 use tokio_util::io::ReaderStream;
 use tower_http::{cors::{AllowOrigin, CorsLayer}, services::{ServeDir, ServeFile}};
@@ -222,8 +222,9 @@ async fn ffmpeg_playback(item: &MediaItem, transcode: bool) -> Response {
     let Ok(mut child) = command.spawn() else { return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required for this file but was not found or could not be started.").into_response(); }; let Some(stdout) = child.stdout.take() else { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); }; tokio::spawn(async move { let _ = child.wait().await; });
     Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE, "video/mp4").header(header::CACHE_CONTROL, "no-store").body(Body::from_stream(ReaderStream::new(stdout))).unwrap()
 }
-pub async fn play_media(State(state): State<Shared>, AxumPath(id): AxumPath<String>, headers: HeaderMap) -> Response { let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); }; match item.playback_mode.as_str() { "directPlay" => direct_stream(&item, &headers).await, "remux" => ffmpeg_playback(&item, false).await, _ => ffmpeg_playback(&item, true).await } }
-pub async fn stream_media(State(state): State<Shared>, AxumPath(id): AxumPath<String>, headers: HeaderMap) -> Response { let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); }; direct_stream(&item, &headers).await }
+fn collection_allowed(state:&crate::AppState,item:&MediaItem,query:&HashMap<String,String>)->bool{!item.collection_protected||item.collection_source_id.as_deref().is_some_and(|id|crate::collection_sources::authorized(state,id,query.get("unlock").map(String::as_str)))}
+pub async fn play_media(State(state): State<Shared>, AxumPath(id): AxumPath<String>,Query(query):Query<HashMap<String,String>>, headers: HeaderMap) -> Response { let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); };if !collection_allowed(&state,&item,&query){return(StatusCode::UNAUTHORIZED,"This collection is locked").into_response()}match item.playback_mode.as_str() { "directPlay" => direct_stream(&item, &headers).await, "remux" => ffmpeg_playback(&item, false).await, _ => ffmpeg_playback(&item, true).await } }
+pub async fn stream_media(State(state): State<Shared>, AxumPath(id): AxumPath<String>,Query(query):Query<HashMap<String,String>>, headers: HeaderMap) -> Response { let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); };if !collection_allowed(&state,&item,&query){return(StatusCode::UNAUTHORIZED,"This collection is locked").into_response()}direct_stream(&item, &headers).await }
 pub async fn artwork_route(State(state): State<Shared>, AxumPath((id, kind)): AxumPath<(String, String)>) -> Response {
     if !["poster", "backdrop", "thumbnail"].contains(&kind.as_str()) { return StatusCode::NOT_FOUND.into_response(); } let Some(item) = find_media(&state, &id) else { return StatusCode::NOT_FOUND.into_response(); };
     let cache_root = state.artwork_path.clone(); let item_for_work = item.clone(); let kind_for_work = kind.clone(); let path = tokio::task::spawn_blocking(move || artwork::ensure(&cache_root, &item_for_work, &kind_for_work)).await.ok().flatten(); let Some(path) = path else { return StatusCode::NOT_FOUND.into_response(); }; let Ok(bytes) = tokio::fs::read(&path).await else { return StatusCode::NOT_FOUND.into_response(); }; let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string(); Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE, mime).header(header::CACHE_CONTROL, "private, max-age=604800").body(Body::from(bytes)).unwrap()

@@ -47,7 +47,7 @@ pub fn scan(
             // for paths already in the library so ordinary scans only inspect new files.
             if previous.duration_seconds.is_some() && previous.container.is_some() {
                 let mut item = previous.clone();
-                if item.kind == "special" && item.thumbnail_url.is_none() {
+                if (item.kind == "special" || item.kind == "collection") && item.thumbnail_url.is_none() {
                     item.thumbnail_url = Some(format!("/art/{}/thumbnail", item.id));
                 }
                 media.push(item);
@@ -60,6 +60,7 @@ pub fn scan(
             Some("movie") => naming::parse_movie(path),
             Some("episode") => naming::parse_tv(path),
             Some("special") => { let mut value = naming::parse_movie(path); value.kind = "special".into(); value.year = None; value },
+            Some("collection") => { let mut value=naming::parse_movie(path);value.kind="collection".into();value.year=None;value },
             _ => naming::parse(path),
         };
         let parsed = apply_override(parsed, &id, path, &item_overrides, &show_overrides);
@@ -77,7 +78,7 @@ pub fn scan(
             default: track.default,
         }));
         let is_episode = parsed.kind == "episode";
-        let is_special = parsed.kind == "special";
+        let is_special = parsed.kind == "special"||parsed.kind=="collection";
         media.push(MediaItem {
             id: id.clone(),
             title: parsed.title,
@@ -110,6 +111,10 @@ pub fn scan(
             release_date: None,
             provider: None,
             provider_id: None,
+            collection_source_id: None,
+            collection_source_name: None,
+            collection_folder: None,
+            collection_protected: false,
         });
         progress("inspecting", discovered, index + 1, Some(path));
     }

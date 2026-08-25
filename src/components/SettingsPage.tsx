@@ -84,6 +84,7 @@ import { SubtitleSettings } from "./SubtitleSettings";
 import { SleepVideoSettings } from "./SleepVideoSettings";
 import { UserAvatarPicker, AvatarBadge } from "./UserAvatarPicker";
 import { WishlistView } from "./WishlistView";
+import { CollectionSourcesSettings } from "./CollectionSourcesSettings";
 import "../activityConsole.css";
 import "../funnelSettings.css";
 
@@ -718,6 +719,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
             {roots("tv", tvPaths, Tv)}
             {roots("special", specialPaths, FolderOpen)}
             <p className="muted">Specials folders are scanned recursively. Onyx uses filenames as titles and does not request TMDB metadata or artwork.</p>
+            <CollectionSourcesSettings onChanged={onChanged}/>
             <button disabled={libraryBusy} onClick={() => void rescan()}>
               <RefreshCw className={libraryBusy ? "spin" : ""} size={17} />
               {libraryBusy ? "Scanning libraries…" : "Rescan libraries"}

@@ -392,7 +392,7 @@ mod tests {
             id: id.into(), title: format!("Episode {episode}"), year: None, kind: "episode".into(), show_title: Some(show.into()), season: Some(1), episode: Some(episode), episode_end: None,
             path: String::new(), stream_url: String::new(), poster_url: None, backdrop_url: None, thumbnail_url: None, subtitles: vec![], progress_seconds: 0,
             duration_seconds: Some(duration_seconds), container: None, video_codec: None, audio_codec: None, width: None, height: None, playback_mode: "directPlay".into(), added_at: None,
-            last_watched_at: None, metadata_entity_id: None, overview: None, genres: vec![], rating: None, release_date: None, provider: None, provider_id: None,
+            last_watched_at: None, metadata_entity_id: None, overview: None, genres: vec![], rating: None, release_date: None, provider: None, provider_id: None, collection_source_id:None, collection_source_name:None, collection_folder:None, collection_protected:false,
         }
     }
 

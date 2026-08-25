@@ -2,6 +2,8 @@ use crate::models::MediaItem;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}, sync::{Arc, RwLock}};
 
+#[derive(Clone)]pub struct CollectionUnlock{pub source_id:String,pub user_id:String,pub last_active:i64}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)] pub library_path: Option<String>,
@@ -67,6 +69,7 @@ pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
     pub media: Arc<RwLock<Vec<MediaItem>>>,
     pub sessions: Arc<RwLock<HashMap<String, u64>>>,
+    pub collection_unlocks: Arc<RwLock<HashMap<String,CollectionUnlock>>>,
     pub scan_progress: Arc<RwLock<ScanProgress>>,
     pub captions: crate::captions::CaptionRuntime,
 }

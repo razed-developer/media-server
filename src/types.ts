@@ -1,4 +1,4 @@
-export type MediaKind = "movie" | "episode" | "special";
+export type MediaKind = "movie" | "episode" | "special" | "collection";
 export type PlaybackMode = "directPlay" | "remux" | "transcode";
 export type ThemeName =
   | "onyx"
@@ -71,7 +71,13 @@ export interface MediaItem {
   releaseDate?: string;
   provider?: string;
   providerId?: string;
+  collectionSourceId?: string;
+  collectionSourceName?: string;
+  collectionFolder?: string;
+  collectionProtected?: boolean;
 }
+export interface CollectionSource { id:string; name:string; path:string; protected:boolean; }
+export interface CollectionSourceInput { id?:string; name:string; path:string; protected:boolean; pin?:string; }
 export interface UserProfile {
   id: string;
   name: string;

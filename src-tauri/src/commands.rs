@@ -167,19 +167,20 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
             let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
             (settings.library_path.clone(), settings.effective_movie_paths(), settings.effective_tv_paths(), settings.effective_special_paths())
         };
-        let mut roots: Vec<(PathBuf, Option<&str>)> = Vec::new();
+        let mut roots: Vec<(PathBuf, Option<String>,Option<crate::collection_sources::CollectionSource>)> = Vec::new();
         if movie_paths.is_empty() && tv_paths.is_empty() && special_paths.is_empty() {
-            if let Some(root) = legacy_path { roots.push((PathBuf::from(root), None)); }
+            if let Some(root) = legacy_path { roots.push((PathBuf::from(root), None,None)); }
         } else {
-            roots.extend(movie_paths.into_iter().map(|root| (PathBuf::from(root), Some("movie"))));
-            roots.extend(tv_paths.into_iter().map(|root| (PathBuf::from(root), Some("episode"))));
-            roots.extend(special_paths.into_iter().map(|root| (PathBuf::from(root), Some("special"))));
+            roots.extend(movie_paths.into_iter().map(|root| (PathBuf::from(root), Some("movie".into()),None)));
+            roots.extend(tv_paths.into_iter().map(|root| (PathBuf::from(root), Some("episode".into()),None)));
+            roots.extend(special_paths.into_iter().map(|root| (PathBuf::from(root), Some("special".into()),None)));
         }
+        for source in crate::collection_sources::list(&state.provider_path)?{roots.push((PathBuf::from(&source.path),Some("collection".into()),Some(source)))}
 
         let mut media = Vec::new();
         let mut discovered_before = 0usize;
         let mut inspected_before = 0usize;
-        for (root, hint) in roots {
+        for (root, hint, source) in roots {
             let mut root_discovered = 0usize;
             let mut root_inspected = 0usize;
             let mut report = |phase: &str, discovered: usize, inspected: usize, path: Option<&Path>| {
@@ -192,7 +193,9 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
                     progress.current_path = path.map(|value| value.to_string_lossy().to_string());
                 }
             };
-            media.extend(library::scan(&root, &state.database_path, hint, &mut report)?);
+            let mut found=library::scan(&root,&state.database_path,hint.as_deref(),&mut report)?;
+            if let Some(source)=source{for item in &mut found{item.collection_source_id=Some(source.id.clone());item.collection_source_name=Some(source.name.clone());item.collection_protected=source.protected;item.collection_folder=Path::new(&item.path).parent().and_then(|parent|parent.strip_prefix(&source.path).ok()).and_then(|relative|relative.components().next()).map(|part|part.as_os_str().to_string_lossy().to_string()).or_else(||Some("Unsorted".into()));}}
+            media.extend(found);
             discovered_before += root_discovered;
             inspected_before += root_inspected;
         }
@@ -209,7 +212,7 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
         if let Ok(mut progress) = state.scan_progress.write() { progress.phase = "saving".into(); }
         let previous_ids = state.media.read().map_err(|_| "Media lock poisoned")?.iter().map(|item| item.id.clone()).collect::<HashSet<_>>();
         database::replace_library(&state.database_path, &media)?;
-        let metadata_media = media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
+        let metadata_media = media.iter().filter(|item| item.kind != "special"&&item.kind!="collection").cloned().collect::<Vec<_>>();
         metadata::reconcile_local_entities(&state.database_path, &metadata_media)?;
         *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone();
         let new_ids = media.iter().filter(|item| !previous_ids.contains(&item.id)).map(|item| item.id.clone()).collect::<Vec<_>>();
@@ -340,6 +343,9 @@ async fn remove_root_async(state: TauriState<'_, Shared>, kind: &'static str, pa
 #[tauri::command] pub async fn remove_tv_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "tv", path).await }
 #[tauri::command] pub async fn add_special_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "special", path, true).await }
 #[tauri::command] pub async fn remove_special_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "special", path).await }
+
+#[tauri::command]pub async fn collection_source_save(input:crate::collection_sources::CollectionSourceInput,state:TauriState<'_,Shared>)->Result<Vec<crate::collection_sources::CollectionSource>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{crate::collection_sources::save(&shared.provider_path,input)?;scan(&shared)?;crate::collection_sources::public_list(&shared.provider_path)}).await.map_err(|e|format!("Collection worker failed: {e}"))?}
+#[tauri::command]pub async fn collection_source_delete(source_id:String,state:TauriState<'_,Shared>)->Result<Vec<crate::collection_sources::CollectionSource>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{crate::collection_sources::delete(&shared.provider_path,&source_id)?;scan(&shared)?;crate::collection_sources::public_list(&shared.provider_path)}).await.map_err(|e|format!("Collection worker failed: {e}"))?}
 
 pub(crate) fn set_access_password_for_state(password: String, state: &Shared) -> Result<(), String> {
     if password.chars().count() < 8 { return Err("Access password must be at least 8 characters".into()); }

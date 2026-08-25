@@ -47,6 +47,10 @@ pub struct MediaItem {
     #[serde(default)] pub release_date: Option<String>,
     #[serde(default)] pub provider: Option<String>,
     #[serde(default)] pub provider_id: Option<String>,
+    #[serde(default)] pub collection_source_id: Option<String>,
+    #[serde(default)] pub collection_source_name: Option<String>,
+    #[serde(default)] pub collection_folder: Option<String>,
+    #[serde(default)] pub collection_protected: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

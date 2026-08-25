@@ -1,13 +1,13 @@
 use crate::{activity, database, live_channels, metadata, metadata_view, models::MediaItem, Shared};
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, State},
+    extract::{Path as AxumPath, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
-use std::process::Stdio;
+use std::{collections::HashMap,process::Stdio};
 use tokio_util::io::ReaderStream;
 
 const USER_HEADER: &str = "x-home-media-user";
@@ -64,8 +64,9 @@ async fn play(State(state): State<Shared>, AxumPath((media_id, offset)): AxumPat
     ffmpeg_offset(item,offset,false,"Live TV").await
 }
 
-async fn resume(State(state): State<Shared>, AxumPath((media_id, offset)): AxumPath<(String, u64)>) -> Response {
+async fn resume(State(state): State<Shared>, AxumPath((media_id, offset)): AxumPath<(String, u64)>,Query(query):Query<HashMap<String,String>>) -> Response {
     let Some(item)=find_item(&state,&media_id) else{return StatusCode::NOT_FOUND.into_response();};
+    if item.collection_protected&&!item.collection_source_id.as_deref().is_some_and(|id|crate::collection_sources::authorized(&state,id,query.get("unlock").map(String::as_str))){return(StatusCode::UNAUTHORIZED,"This collection is locked").into_response()}
     ffmpeg_offset(item,offset,true,"Playback").await
 }
 

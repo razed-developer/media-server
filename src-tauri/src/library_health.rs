@@ -107,14 +107,21 @@ fn repair_target_id(state: &crate::app_state::AppState, media_id: &str) -> Resul
 }
 
 #[tauri::command]
-pub fn library_health(state: State<'_, Shared>) -> Result<LibraryHealthReport, String> { report(&state) }
+pub async fn library_health(state: State<'_, Shared>) -> Result<LibraryHealthReport, String> {
+    let shared = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || report(&shared)).await.map_err(|error| error.to_string())?
+}
+
+async fn report_async(shared: Shared) -> Result<LibraryHealthReport, String> {
+    tauri::async_runtime::spawn_blocking(move || report(&shared)).await.map_err(|error| error.to_string())?
+}
 
 #[tauri::command]
 pub async fn library_health_repair_item(id: String, state: State<'_, Shared>) -> Result<RepairReport, String> {
-    let before = report(&state)?;
+    let before = report_async(state.inner().clone()).await?;
     let was_incomplete = before.items.iter().any(|item| item.id == id && item.status != "complete");
     let (_, refreshed) = repair_target(&state, &id).await?;
-    let health = report(&state)?;
+    let health = report_async(state.inner().clone()).await?;
     let repaired = usize::from(was_incomplete && health.items.iter().any(|item| item.id == id && item.status == "complete"));
     Ok(RepairReport { attempted: 1, repaired, refreshed: usize::from(refreshed), needs_review: usize::from(repaired == 0), failed: 0, failures: vec![], health })
 }
@@ -122,7 +129,7 @@ pub async fn library_health_repair_item(id: String, state: State<'_, Shared>) ->
 #[tauri::command]
 pub async fn library_health_repair_all(state: State<'_, Shared>) -> Result<RepairReport, String> {
     if !metadata::tmdb::configured() { return Err("Configure TMDB in Settings → Metadata before repairing the library.".into()); }
-    let before = report(&state)?;
+    let before = report_async(state.inner().clone()).await?;
     let candidates = before.items.iter().filter(|item| item.status != "complete" && item.status != "missing-file" && !item.issues.iter().all(|issue| issue.contains("probe"))).map(|item| (item.id.clone(), item.title.clone())).collect::<Vec<_>>();
     let mut seen = HashSet::new();
     let mut attempted = 0; let mut refreshed = 0; let mut failures = Vec::new();
@@ -141,7 +148,7 @@ pub async fn library_health_repair_all(state: State<'_, Shared>) -> Result<Repai
             Err(error) => { attempted += 1; failures.push(format!("{title}: {error}")); }
         }
     }
-    let health = report(&state)?;
+    let health = report_async(state.inner().clone()).await?;
     let repaired = before.needs_attention.saturating_sub(health.needs_attention);
     let needs_review = health.items.iter().filter(|item| item.status == "unmatched").count();
     activity::info("Library", format!("Metadata repair complete: {repaired} repaired, {needs_review} need review, {} failed", failures.len()));

@@ -62,9 +62,6 @@ pub fn run() {
     let initial_media = database::load_library(&database_path).unwrap_or_default();
     activity::info("Performance",format!("Startup library load: {} ms for {} items",phase.elapsed().as_millis(),initial_media.len()));
     let metadata_media = initial_media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
-    let phase=Instant::now();
-    let _ = metadata::reconcile_local_entities(&database_path, &metadata_media);
-    activity::info("Performance",format!("Startup metadata reconciliation: {} ms for {} items",phase.elapsed().as_millis(),metadata_media.len()));
     activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
@@ -80,9 +77,16 @@ pub fn run() {
         .manage(shared.clone())
         .setup(move |app| {
             let server_state = shared.clone();
+            let reconcile_path = shared.database_path.clone();
+            let reconcile_items = metadata_media.clone();
             let web_root = if cfg!(debug_assertions) { None } else { app.path().resolve("web", BaseDirectory::Resource).ok() };
             activity::info("Server", format!("Starting browser server on port {PORT}"));
             tauri::async_runtime::spawn(async move { server::start(server_state, PORT, FUNNEL_GATEWAY_PORT, web_root).await; });
+            tauri::async_runtime::spawn_blocking(move || {
+                let phase = Instant::now();
+                if let Err(error) = metadata::reconcile_local_entities(&reconcile_path, &reconcile_items) { activity::error("Metadata", format!("Background metadata reconciliation failed: {error}")); }
+                activity::info("Performance",format!("Background metadata reconciliation: {} ms for {} items",phase.elapsed().as_millis(),reconcile_items.len()));
+            });
             if let Some(window) = app.get_webview_window("main") { let _ = window.set_title("Onyx"); }
             Ok(())
         })

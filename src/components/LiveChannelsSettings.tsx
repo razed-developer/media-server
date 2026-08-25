@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, X } from 'lucide-react';
-import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
+import { ArrowDown, ArrowUp, Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, Upload, X } from 'lucide-react';
+import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, reorderLiveChannels, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork, setLiveChannelStyle } from '../api';
 import type { LiveChannel, LiveChannelCriteria, LiveChannelGenreScope, LiveChannelOrder, MediaItem, Playlist } from '../types';
+import { CHANNEL_ART_OPTIONS, ChannelArtwork } from './ChannelArtwork';
 
 type ShowChoice={title:string;posterUrl?:string;episodeCount:number};
 type WarmCriteria={shows:string[];genres:string[];playlists:Playlist[]};
@@ -28,6 +29,9 @@ export function LiveChannelsSettings(){
   const[error,setError]=useState<string|null>(null);
   const[busy,setBusy]=useState(false);
   const[criteriaBusy,setCriteriaBusy]=useState(!warm);
+  const[artEditing,setArtEditing]=useState<LiveChannel|null>(null);
+  const[artIcon,setArtIcon]=useState('radio');
+  const[artColor,setArtColor]=useState('#7457a6');
 
   const refresh=async()=>{
     const started=performance.now();try{
@@ -58,7 +62,10 @@ export function LiveChannelsSettings(){
   const edit=(channel:LiveChannel)=>{setEditingId(channel.id);setName(channel.name);setCriteriaType(channel.criteriaType);setGenreScope(channel.genreScope??'both');setOrderMode(channel.orderMode);if(channel.criteriaType==='playlist'){setPlaylistValue(channel.criteriaValue);setSelectedValues([])}else setSelectedValues(channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean))};
   const saveChannel=async()=>{if(!name.trim()||selectedCount===0||!desktop)return;setBusy(true);setError(null);try{setChannels(await saveLiveChannel({id:editingId,name:name.trim(),criteriaType,criteriaValue:criteriaType==='playlist'?playlistValue:selectedValues[0],criteriaValues:criteriaType==='playlist'?[playlistValue]:selectedValues,genreScope,orderMode}));localStorage.removeItem(`onyx-live-guide:${getActiveUserId()}`);resetBuilder()}catch(cause){setError(String(cause))}finally{setBusy(false)}};
   const remove=async(channel:LiveChannel)=>{if(!desktop||!window.confirm(`Delete channel “${channel.name}”?`))return;try{setChannels(await deleteLiveChannel(channel.id));if(editingId===channel.id)resetBuilder()}catch(cause){setError(String(cause))}};
-  const art=async(channel:LiveChannel)=>{if(!desktop)return;const path=await chooseLiveChannelArtwork();if(!path)return;try{setChannels(await setLiveChannelArtwork(channel.id,path))}catch(cause){setError(String(cause))}};
+  const openArt=(channel:LiveChannel)=>{setArtEditing(channel);setArtIcon(channel.artIcon??'radio');setArtColor(channel.artColor??'#7457a6')};
+  const saveArtStyle=async()=>{if(!artEditing)return;setBusy(true);try{setChannels(await setLiveChannelStyle(artEditing.id,artIcon,artColor));localStorage.removeItem(`onyx-live-guide:${getActiveUserId()}`);setArtEditing(null)}catch(cause){setError(String(cause))}finally{setBusy(false)}};
+  const uploadArt=async()=>{if(!artEditing||!desktop)return;const path=await chooseLiveChannelArtwork();if(!path)return;setBusy(true);try{setChannels(await setLiveChannelArtwork(artEditing.id,path));localStorage.removeItem(`onyx-live-guide:${getActiveUserId()}`);setArtEditing(null)}catch(cause){setError(String(cause))}finally{setBusy(false)}};
+  const move=async(index:number,direction:-1|1)=>{const target=index+direction;if(target<0||target>=channels.length)return;const next=[...channels];[next[index],next[target]]=[next[target],next[index]];setChannels(next);try{setChannels(await reorderLiveChannels(next.map(channel=>channel.id)));localStorage.removeItem(`onyx-live-guide:${getActiveUserId()}`)}catch(cause){setChannels(channels);setError(String(cause))}};
   const channelSummary=(channel:LiveChannel)=>{if(channel.criteriaType==='playlist')return playlists.find(playlist=>playlist.id===channel.criteriaValue)?.name??'Playlist';const values=channel.criteriaValues?.length?channel.criteriaValues:[channel.criteriaValue].filter(Boolean);const summary=values.length<=3?values.join(', '):`${values.slice(0,3).join(', ')} +${values.length-3} more`;if(channel.criteriaType!=='genre')return summary;const scope=channel.genreScope==='movies'?'Movies':channel.genreScope==='shows'?'Shows':'Movies & shows';return `${scope} · ${summary}`};
 
   return <div className="live-settings">
@@ -77,14 +84,15 @@ export function LiveChannelsSettings(){
       <div className="metadata-actions"><button className="primary" disabled={busy||!name.trim()||selectedCount===0} onClick={()=>void saveChannel()}>{editingId?<Pencil size={17}/>:<Plus size={17}/>} {busy?'Saving…':editingId?'Save channel':'Create channel'}</button>{editingId&&<button onClick={resetBuilder}><X size={16}/>Cancel edit</button>}</div>
     </section>}
     {showPickerOpen&&<div className="live-show-picker-modal" role="dialog" aria-modal="true" aria-label="Choose TV shows"><header><div><p className="eyebrow">CHANNEL CONTENT</p><h2>Choose TV shows</h2><span>{selectedValues.length} selected</span></div><input autoFocus value={showQuery} onChange={event=>setShowQuery(event.target.value)} placeholder="Search shows"/><button type="button" onClick={()=>setShowPickerOpen(false)}><X size={20}/>Done</button></header><div className="live-show-modal-grid">{visibleShowChoices.map(show=><button type="button" key={show.title} className={selectedValues.includes(show.title)?'selected':''} onClick={()=>toggleValue(show.title)}>{show.posterUrl?<img src={resolveMediaUrl(show.posterUrl)} alt=""/>:<span className="live-show-placeholder">{show.title.charAt(0)}</span>}<span className="live-show-check">{selectedValues.includes(show.title)&&<Check size={18}/>}</span><strong>{show.title}</strong><small>{show.episodeCount} episodes</small></button>)}</div></div>}
+    {artEditing&&<div className="channel-art-modal" role="dialog" aria-modal="true" aria-label={`Artwork for ${artEditing.name}`}><section><header><div><p className="eyebrow">CHANNEL ART</p><h2>{artEditing.name}</h2><p>Choose a reusable symbol and its background colour, or upload your own landscape image.</p></div><button className="icon-action" onClick={()=>setArtEditing(null)} aria-label="Close artwork editor"><X size={18}/></button></header><div className="channel-art-editor"><div className="channel-art-preview"><ChannelArtwork channel={{...artEditing,artUrl:undefined,artIcon,artColor}}/></div><div><span className="channel-art-label">Symbol</span><div className="channel-art-options">{CHANNEL_ART_OPTIONS.map(option=><button type="button" className={artIcon===option.id?'active':''} key={option.id} onClick={()=>setArtIcon(option.id)}><ChannelArtwork channel={{...artEditing,artUrl:undefined,artIcon:option.id,artColor}}/><small>{option.label}</small></button>)}</div><label className="channel-color-field"><span>Background colour</span><input type="color" value={artColor} onChange={event=>setArtColor(event.target.value)}/><code>{artColor.toUpperCase()}</code></label></div></div><footer><button onClick={()=>void uploadArt()} disabled={busy}><Upload size={16}/>Upload custom image</button><span>Custom images are copied into Onyx and saved immediately.</span><button className="primary" onClick={()=>void saveArtStyle()} disabled={busy}><Check size={16}/>Save built-in artwork</button></footer></section></div>}
     <section className="live-channel-settings-list">
-      {channels.map(channel=><article className="settings-card live-channel-setting" key={channel.id}>
-        <div className="live-channel-setting-art">{channel.artUrl?<img src={resolveMediaUrl(channel.artUrl)} alt=""/>:<Radio size={26}/>}</div>
+      {channels.map((channel,index)=><article className="settings-card live-channel-setting" key={channel.id}>
+        <div className="live-channel-setting-art"><ChannelArtwork channel={channel}/></div>
         <div className="live-channel-setting-copy"><h3>{channel.name}</h3><p>{channelSummary(channel)} · {channel.orderMode==='shuffle'?'Shuffled':'In order'}</p></div>
-        {desktop&&<><button onClick={()=>edit(channel)}><Pencil size={16}/>Edit</button><button onClick={()=>void art(channel)} title="Recommended: 16:9 landscape, 1280×720 or larger. PNG, JPG/JPEG, or WebP."><Image size={16}/>Artwork</button><button className="danger-text" onClick={()=>void remove(channel)}><Trash2 size={16}/>Delete</button></>}
+        {desktop&&<><div className="channel-order-buttons"><button disabled={index===0} onClick={()=>void move(index,-1)} title="Move channel up" aria-label={`Move ${channel.name} up`}><ArrowUp size={15}/></button><button disabled={index===channels.length-1} onClick={()=>void move(index,1)} title="Move channel down" aria-label={`Move ${channel.name} down`}><ArrowDown size={15}/></button></div><button onClick={()=>edit(channel)}><Pencil size={16}/>Edit</button><button onClick={()=>openArt(channel)}><Image size={16}/>Artwork</button><button className="danger-text" onClick={()=>void remove(channel)}><Trash2 size={16}/>Delete</button></>}
       </article>)}
       {!channels.length&&<div className="settings-card live-settings-empty"><Shuffle size={24}/><div><strong>No Live Channels yet</strong></div></div>}
     </section>
-    {desktop&&<p className="muted">Channel artwork: use a 16:9 landscape image, ideally 1280×720 or 1920×1080. PNG, JPG/JPEG, and WebP are supported.</p>}
+    {desktop&&<p className="muted">Artwork changes are saved when you choose “Save built-in artwork.” Uploaded PNG, JPG/JPEG, or WebP files are copied into Onyx and saved immediately.</p>}
   </div>;
 }

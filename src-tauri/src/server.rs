@@ -217,7 +217,7 @@ async fn api_sleep_videos(State(state):State<Shared>)->Json<crate::sleep_videos:
 async fn sleep_video(State(state):State<Shared>,AxumPath(id):AxumPath<String>,headers:HeaderMap)->Response{let Some(path)=crate::sleep_videos::path_for_id(&state,&id)else{return StatusCode::NOT_FOUND.into_response()};direct_file(&path,&headers).await}
 async fn ffmpeg_playback(item: &MediaItem, transcode: bool) -> Response {
     let mut command = crate::child_process::async_command("ffmpeg"); command.kill_on_drop(true).args(["-hide_banner", "-loglevel", "error", "-i"]).arg(&item.path).args(["-map", "0:v:0", "-map", "0:a:0?"]);
-    if transcode { command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k"]); } else { command.args(["-c:v", "copy", "-c:a", "copy"]); }
+    if transcode { if item.height.is_some_and(|height|height>1080){command.args(["-vf","scale=-2:1080"]);} command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "256k"]); } else { command.args(["-c:v", "copy", "-c:a", "copy"]); }
     command.args(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]).stdout(Stdio::piped()).stderr(Stdio::null());
     let Ok(mut child) = command.spawn() else { return (StatusCode::SERVICE_UNAVAILABLE, "FFmpeg is required for this file but was not found or could not be started.").into_response(); }; let Some(stdout) = child.stdout.take() else { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); }; tokio::spawn(async move { let _ = child.wait().await; });
     Response::builder().status(StatusCode::OK).header(header::CONTENT_TYPE, "video/mp4").header(header::CACHE_CONTROL, "no-store").body(Body::from_stream(ReaderStream::new(stdout))).unwrap()

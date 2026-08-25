@@ -119,6 +119,7 @@ pub fn run() {
             commands::metadata_search, commands::metadata_apply_match, commands::metadata_auto_match_all,
             live_channels::live_channels_list, live_channels::live_channels_save,
             live_channels::live_channels_delete, live_channels::live_channels_set_artwork,
+            live_channels::live_channels_set_style, live_channels::live_channels_reorder,
             live_channels::live_channels_guide,
             subtitles::subtitle_provider_status, subtitles::subtitle_provider_save,
             subtitles::subtitle_provider_clear, subtitles::subtitle_provider_test,

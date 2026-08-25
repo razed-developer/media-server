@@ -2,7 +2,7 @@ use crate::{activity, database, metadata, models::{MediaItem, Playlist}, Shared}
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use std::{collections::{HashMap, HashSet}, fs, path::{Path, PathBuf}};
 use tauri::State as TauriState;
 use uuid::Uuid;
 
@@ -25,6 +25,10 @@ pub struct LiveChannel {
     pub created_at: i64,
     #[serde(default)]
     pub art_url: Option<String>,
+    #[serde(default)]
+    pub art_icon: Option<String>,
+    #[serde(default)]
+    pub art_color: Option<String>,
 }
 
 impl LiveChannel {
@@ -154,6 +158,8 @@ pub fn save(root: &Path, user_id: &str, input: LiveChannelInput) -> Result<Vec<L
         anchor_time: now,
         created_at: now,
         art_url: possible_art(root, &id).map(|_| format!("/api/live-channels/art/{id}")),
+        art_icon: channels.iter().find(|channel|channel.id==id).and_then(|channel|channel.art_icon.clone()),
+        art_color: channels.iter().find(|channel|channel.id==id).and_then(|channel|channel.art_color.clone()),
     };
     if let Some(index) = channels.iter().position(|channel| channel.id == id) {
         let created_at = channels[index].created_at;
@@ -193,6 +199,21 @@ pub fn set_artwork(root: &Path, user_id: &str, channel_id: &str, source: &Path) 
     fs::copy(source, art_dir(root).join(format!("{channel_id}.{extension}"))).map_err(|error| error.to_string())?;
     activity::info("Live TV", format!("Updated custom artwork for channel {channel_id}"));
     list(root, user_id)
+}
+
+pub fn set_style(root:&Path,user_id:&str,channel_id:&str,icon:Option<String>,color:Option<String>)->Result<Vec<LiveChannel>,String>{
+    const ICONS:[&str;10]=["smile","frown","camera","music","knife","ghost","rocket","heart","sports","radio"];
+    let mut channels=list(root,user_id)?;let Some(channel)=channels.iter_mut().find(|channel|channel.id==channel_id)else{return Err("Live channel not found".into())};
+    if let Some(value)=icon.as_deref(){if !ICONS.contains(&value){return Err("Unknown channel symbol".into())}}
+    if let Some(value)=color.as_deref(){if value.len()!=7||!value.starts_with('#')||!value[1..].chars().all(|c|c.is_ascii_hexdigit()){return Err("Channel colour must be a hex colour".into())}}
+    channel.art_icon=icon;channel.art_color=color;if let Some(path)=possible_art(root,channel_id){let _=fs::remove_file(path);}persist(root,user_id,&channels)?;activity::info("Live TV",format!("Updated built-in artwork for channel {channel_id}"));decorate_art(root,&mut channels);Ok(channels)
+}
+
+pub fn reorder(root:&Path,user_id:&str,ordered_ids:&[String])->Result<Vec<LiveChannel>,String>{
+    let channels=list(root,user_id)?;let unique=ordered_ids.iter().collect::<HashSet<_>>();if channels.len()!=ordered_ids.len()||unique.len()!=ordered_ids.len(){return Err("Channel order is incomplete".into())}
+    let by_id=channels.into_iter().map(|channel|(channel.id.clone(),channel)).collect::<HashMap<_,_>>();let mut ordered=Vec::with_capacity(ordered_ids.len());
+    for id in ordered_ids{ordered.push(by_id.get(id).cloned().ok_or("Channel order contains an unknown channel")?)}
+    persist(root,user_id,&ordered)?;decorate_art(root,&mut ordered);Ok(ordered)
 }
 
 pub fn artwork(root: &Path, channel_id: &str) -> Option<PathBuf> { possible_art(root, channel_id) }
@@ -344,6 +365,12 @@ pub fn live_channels_set_artwork(user_id: String, channel_id: String, path: Stri
 }
 
 #[tauri::command]
+pub fn live_channels_set_style(user_id:String,channel_id:String,icon:Option<String>,color:Option<String>,state:TauriState<'_,Shared>)->Result<Vec<LiveChannel>,String>{if !database::user_exists(&state.database_path,&user_id){return Err("Unknown Onyx user".into())}set_style(&state.provider_path,&user_id,&channel_id,icon,color)}
+
+#[tauri::command]
+pub fn live_channels_reorder(user_id:String,ordered_ids:Vec<String>,state:TauriState<'_,Shared>)->Result<Vec<LiveChannel>,String>{if !database::user_exists(&state.database_path,&user_id){return Err("Unknown Onyx user".into())}reorder(&state.provider_path,&user_id,&ordered_ids)}
+
+#[tauri::command]
 pub async fn live_channels_guide(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<GuideChannel>, String> {
     let shared = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -371,7 +398,7 @@ mod tests {
 
     #[test]
     fn schedule_advances_while_away() {
-        let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), criteria_values: vec!["Demo".into()], genre_scope: "both".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
+        let channel = LiveChannel { id: "c".into(), name: "Demo".into(), criteria_type: "show".into(), criteria_value: "Demo".into(), criteria_values: vec!["Demo".into()], genre_scope: "both".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None, art_icon:None, art_color:None };
         let items = vec![media("a", 600, 1, "Demo"), media("b", 600, 2, "Demo"), media("c", 600, 3, "Demo")];
         let row = build_row(channel, &items, &[], 2_200, 3_600);
         assert_eq!(row.current.as_ref().unwrap().media_id, "c");
@@ -383,7 +410,7 @@ mod tests {
 
     #[test]
     fn multi_show_channel_combines_selected_shows() {
-        let channel = LiveChannel { id: "sw".into(), name: "Star Wars".into(), criteria_type: "show".into(), criteria_value: "Andor".into(), criteria_values: vec!["Andor".into(), "Ahsoka".into()], genre_scope: "both".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None };
+        let channel = LiveChannel { id: "sw".into(), name: "Star Wars".into(), criteria_type: "show".into(), criteria_value: "Andor".into(), criteria_values: vec!["Andor".into(), "Ahsoka".into()], genre_scope: "both".into(), order_mode: "sequential".into(), anchor_time: 1_000, created_at: 1_000, art_url: None, art_icon:None, art_color:None };
         let items = vec![media("a", 600, 1, "Andor"), media("b", 600, 1, "Ahsoka"), media("c", 600, 1, "Other")];
         let selected = candidates(&channel, &items, &[]);
         assert_eq!(selected.len(), 2);

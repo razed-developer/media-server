@@ -51,7 +51,7 @@ async fn ffmpeg_offset(item:MediaItem,offset:u64,preserve_timeline:bool,category
     let offset_arg=offset.to_string();
     let mut command=crate::child_process::async_command("ffmpeg");
     command.kill_on_drop(true).args(["-hide_banner","-loglevel","error","-ss"]).arg(&offset_arg).arg("-i").arg(&item.path).args(["-map","0:v:0","-map","0:a:0?"]);
-    if item.playback_mode=="transcode"{command.args(["-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","192k"]);}else{command.args(["-c:v","copy","-c:a","copy"]);}
+    if item.playback_mode=="transcode"{if item.height.is_some_and(|height|height>1080){command.args(["-vf","scale=-2:1080"]);}command.args(["-c:v","libx264","-preset","veryfast","-crf","20","-c:a","aac","-b:a","256k"]);}else{command.args(["-c:v","copy","-c:a","copy"]);}
     if preserve_timeline{command.args(["-output_ts_offset"]).arg(&offset_arg);}
     command.args(["-movflags","frag_keyframe+empty_moov+default_base_moof","-f","mp4","pipe:1"]).stdout(Stdio::piped()).stderr(Stdio::null());
     let Ok(mut child)=command.spawn() else{return(StatusCode::SERVICE_UNAVAILABLE,"FFmpeg is required for this playback mode.").into_response();};

@@ -242,6 +242,8 @@ export interface LiveChannel {
   anchorTime: number;
   createdAt: number;
   artUrl?: string;
+  artIcon?: string;
+  artColor?: string;
 }
 export interface LiveChannelInput {
   id?: string;

@@ -439,6 +439,8 @@ export async function setLiveChannelArtwork(
     path,
   });
 }
+export async function setLiveChannelStyle(channelId:string,icon?:string,color?:string):Promise<LiveChannel[]>{if(!isTauriDesktop())throw new Error("Live Channel artwork is managed from the desktop server app.");return invoke<LiveChannel[]>("live_channels_set_style",{userId:activeUserId,channelId,icon:icon??null,color:color??null})}
+export async function reorderLiveChannels(orderedIds:string[]):Promise<LiveChannel[]>{if(!isTauriDesktop())throw new Error("Live Channel order is managed from the desktop server app.");return invoke<LiveChannel[]>("live_channels_reorder",{userId:activeUserId,orderedIds})}
 export async function getLiveChannelGuide(): Promise<GuideChannel[]> {
   if (isTauriDesktop())
     return invoke<GuideChannel[]>("live_channels_guide", {

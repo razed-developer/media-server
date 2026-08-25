@@ -34,6 +34,7 @@ pub struct CaptionRuntime {
     queue: Arc<RwLock<VecDeque<String>>>,
     jobs: Arc<RwLock<HashMap<String, CaptionJob>>>,
     active: Arc<RwLock<Option<String>>>,
+    ready: Arc<RwLock<Option<bool>>>,
 }
 
 fn available_command(configured: Option<&str>) -> Option<String> {
@@ -47,19 +48,25 @@ fn available_command(configured: Option<&str>) -> Option<String> {
 }
 
 fn configured(state: &crate::app_state::AppState) -> Result<(String, PathBuf, String), String> {
-    let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
-    let executable = available_command(settings.caption_executable.as_deref())
+    let (configured_executable, configured_model, configured_language) = {
+        let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
+        (settings.caption_executable.clone(), settings.caption_model_path.clone(), settings.caption_language.clone())
+    };
+    let executable = available_command(configured_executable.as_deref())
         .ok_or("whisper.cpp was not found. Choose whisper-cli in Settings → Subtitles.")?;
-    let model = settings.caption_model_path.as_ref().map(PathBuf::from)
+    let model = configured_model.as_ref().map(PathBuf::from)
         .filter(|path| path.is_file()).ok_or("Choose a downloaded whisper.cpp model in Settings → Subtitles.")?;
-    Ok((executable, model, if settings.caption_language.trim().is_empty() { "en".into() } else { settings.caption_language.clone() }))
+    Ok((executable, model, if configured_language.trim().is_empty() { "en".into() } else { configured_language }))
 }
 
 pub fn status(state: &crate::app_state::AppState) -> CaptionStatus {
     let settings = state.settings.read().ok();
     let executable = settings.as_ref().and_then(|s| s.caption_executable.clone());
     let model_path = settings.as_ref().and_then(|s| s.caption_model_path.clone());
-    let ready = available_command(executable.as_deref()).is_some() && model_path.as_ref().is_some_and(|p| Path::new(p).is_file());
+    let ready = state.captions.ready.read().ok().and_then(|value|*value).unwrap_or_else(|| {
+        let value = available_command(executable.as_deref()).is_some() && model_path.as_ref().is_some_and(|p| Path::new(p).is_file());
+        if let Ok(mut cached)=state.captions.ready.write(){*cached=Some(value);} value
+    });
     let mut jobs = state.captions.jobs.read().map(|v| v.values().cloned().collect::<Vec<_>>()).unwrap_or_default();
     jobs.sort_by(|a,b| b.queued_at.cmp(&a.queued_at));
     CaptionStatus {
@@ -188,7 +195,7 @@ pub fn caption_status(state: State<'_, Shared>) -> CaptionStatus { status(&state
 #[tauri::command]
 pub fn caption_configure(enabled: bool, auto_new: bool, language: String, executable: Option<String>, model_path: Option<String>, state: State<'_, Shared>) -> Result<CaptionStatus,String> {
     { let mut settings=state.settings.write().map_err(|_|"Settings lock poisoned")?; settings.captions_enabled=enabled; settings.captions_auto_new=auto_new; settings.caption_language=if language.trim().is_empty(){"en".into()}else{language.trim().into()}; settings.caption_executable=executable.filter(|v|!v.trim().is_empty()); settings.caption_model_path=model_path.filter(|v|!v.trim().is_empty()); }
-    persist_settings(&state)?; Ok(status(&state))
+    persist_settings(&state)?;if let Ok(mut ready)=state.captions.ready.write(){*ready=None;}Ok(status(&state))
 }
 
 #[tauri::command]

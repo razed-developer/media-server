@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
   ArrowLeft, BarChart3, Check, ChevronDown, EyeOff, Expand, Film, FolderOpen, History,
@@ -180,6 +181,7 @@ function App() {
 
   const applyTheme = (value: ThemeName) => { setThemeState(value); document.documentElement.dataset.theme = value; };
   const refresh = async () => {
+    const started=performance.now();
     try {
       window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Loading shows…'}}));
       const [library, serverStatus, playlistData, prefs, stats, userData, avatarData] = await Promise.all([listMedia(), getServerStatus(), listPlaylists(), getUserPreferences(), getAnalytics(), listUsers(), listUserAvatars()]);
@@ -187,7 +189,9 @@ function App() {
       const showMap=new Map<string,{title:string;posterUrl?:string;episodeCount:number}>();
       for(const item of library){if(item.kind!=='episode'||!item.showTitle)continue;const current=showMap.get(item.showTitle);showMap.set(item.showTitle,{title:item.showTitle,posterUrl:current?.posterUrl??item.posterUrl??item.thumbnailUrl,episodeCount:(current?.episodeCount??0)+1})}
       sessionStorage.setItem(`onyx-live-shows:${getActiveUserId()}`,JSON.stringify([...showMap.values()].sort((a,b)=>a.title.localeCompare(b.title))));
+      sessionStorage.setItem(`onyx-live-criteria:${getActiveUserId()}`,JSON.stringify({shows:[...showMap.keys()].sort((a,b)=>a.localeCompare(b)),genres:[...new Set(library.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b)),playlists:playlistData}));
       window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Preparing your library…'}}));
+      const elapsed=Math.round(performance.now()-started);if(isDesktop)void invoke('record_client_activity',{level:elapsed>1000?'warning':'info',category:'Performance',message:`Initial UI data load completed in ${elapsed} ms for ${library.length} media items`}).catch(()=>{});
     } catch (cause) { setError(String(cause)); }
   };
   const loadUsers = async () => {

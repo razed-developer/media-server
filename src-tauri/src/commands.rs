@@ -5,7 +5,7 @@ use crate::{
 };
 use argon2::{password_hash::{PasswordHasher, SaltString}, Argon2};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, net::UdpSocket, path::{Path, PathBuf}, process::Command, sync::Arc};
+use std::{collections::HashSet, net::UdpSocket, path::{Path, PathBuf}, process::Command, sync::Arc, time::Instant};
 use tauri::State as TauriState;
 use uuid::Uuid;
 
@@ -396,8 +396,10 @@ pub fn user_analytics(user_id: String, state: TauriState<'_, Shared>) -> Result<
 }
 #[tauri::command]
 pub fn list_media(user_id: String, include_hidden: Option<bool>, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
+    let started=Instant::now();
     ensure_user(&state, &user_id)?;
-    enrich(&state, database::load_library_for_user(&state.database_path, &user_id, include_hidden.unwrap_or(false))?)
+    let result=enrich(&state, database::load_library_for_user(&state.database_path, &user_id, include_hidden.unwrap_or(false))?);
+    let elapsed=started.elapsed().as_millis();if elapsed>200{crate::activity::warn("Performance",format!("list_media took {elapsed} ms for {} items",result.as_ref().map(|items|items.len()).unwrap_or(0)));}result
 }
 #[tauri::command]
 pub fn save_progress(user_id: String, id: String, seconds: u64, watched_seconds: Option<u64>, state: TauriState<'_, Shared>) -> Result<(), String> {

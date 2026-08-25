@@ -26,7 +26,7 @@ mod user_features;
 mod user_features_server;
 
 use app_state::{app_data_dir, load_settings, AppState, ScanProgress};
-use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}};
+use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}, time::Instant};
 use tauri::{path::BaseDirectory, Manager};
 
 pub use app_state::Shared;
@@ -48,18 +48,23 @@ fn open_external_url(url: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let startup = Instant::now();
     let data_dir = app_data_dir();
     let settings_path = data_dir.join("settings.json");
     let database_path = data_dir.join("library.db");
     let artwork_path = data_dir.join("artwork");
     let provider_path = data_dir.join("providers");
     activity::info("Server", format!("Onyx starting with data directory {}", data_dir.display()));
-    if let Err(error) = database::init(&database_path) { activity::error("Database", format!("Database initialization failed: {error}")); }
-    if let Err(error) = metadata::init(&database_path) { activity::error("Metadata", format!("Metadata initialization failed: {error}")); }
-    if let Err(error) = user_features::init(&database_path) { activity::error("Users", format!("User feature initialization failed: {error}")); }
+    let phase=Instant::now();if let Err(error) = database::init(&database_path) { activity::error("Database", format!("Database initialization failed: {error}")); }activity::info("Performance",format!("Startup database initialization: {} ms",phase.elapsed().as_millis()));
+    let phase=Instant::now();if let Err(error) = metadata::init(&database_path) { activity::error("Metadata", format!("Metadata initialization failed: {error}")); }activity::info("Performance",format!("Startup metadata initialization: {} ms",phase.elapsed().as_millis()));
+    let phase=Instant::now();if let Err(error) = user_features::init(&database_path) { activity::error("Users", format!("User feature initialization failed: {error}")); }activity::info("Performance",format!("Startup user-feature initialization: {} ms",phase.elapsed().as_millis()));
+    let phase=Instant::now();
     let initial_media = database::load_library(&database_path).unwrap_or_default();
+    activity::info("Performance",format!("Startup library load: {} ms for {} items",phase.elapsed().as_millis(),initial_media.len()));
     let metadata_media = initial_media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
+    let phase=Instant::now();
     let _ = metadata::reconcile_local_entities(&database_path, &metadata_media);
+    activity::info("Performance",format!("Startup metadata reconciliation: {} ms for {} items",phase.elapsed().as_millis(),metadata_media.len()));
     activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,
@@ -68,6 +73,7 @@ pub fn run() {
         scan_progress: Arc::new(RwLock::new(ScanProgress::default())),
         captions: captions::CaptionRuntime::default(),
     });
+    activity::info("Performance",format!("Backend startup preparation total: {} ms",startup.elapsed().as_millis()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

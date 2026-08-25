@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, X } from 'lucide-react';
 import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork } from '../api';
 import type { LiveChannel, LiveChannelCriteria, LiveChannelGenreScope, LiveChannelOrder, MediaItem, Playlist } from '../types';
@@ -29,12 +30,11 @@ export function LiveChannelsSettings(){
   const[criteriaBusy,setCriteriaBusy]=useState(!warm);
 
   const refresh=async()=>{
-    try{
-      const saved=await listLiveChannels();setChannels(saved);setError(null);
+    const started=performance.now();try{
+      const[saved,p]=await Promise.all([listLiveChannels(),listPlaylists()]);setChannels(saved);setPlaylists(p);setError(null);
       if(!warm)setCriteriaBusy(true);
-      const p=await listPlaylists();setPlaylists(p);
-      const m=await listMedia();setMedia(m);if(showChoices.length===0){const map=new Map<string,ShowChoice>();for(const item of m){if(item.kind!=='episode'||!item.showTitle)continue;const current=map.get(item.showTitle);map.set(item.showTitle,{title:item.showTitle,posterUrl:current?.posterUrl??item.posterUrl??item.thumbnailUrl,episodeCount:(current?.episodeCount??0)+1})}setShowChoices([...map.values()].sort((a,b)=>a.title.localeCompare(b.title)))}
-    }catch(cause){setError(String(cause))}finally{setCriteriaBusy(false)}
+      if(!warm){const m=await listMedia();setMedia(m);if(showChoices.length===0){const map=new Map<string,ShowChoice>();for(const item of m){if(item.kind!=='episode'||!item.showTitle)continue;const current=map.get(item.showTitle);map.set(item.showTitle,{title:item.showTitle,posterUrl:current?.posterUrl??item.posterUrl??item.thumbnailUrl,episodeCount:(current?.episodeCount??0)+1})}setShowChoices([...map.values()].sort((a,b)=>a.title.localeCompare(b.title)))}}
+    }catch(cause){setError(String(cause))}finally{setCriteriaBusy(false);const elapsed=Math.round(performance.now()-started);if(desktop)void invoke('record_client_activity',{level:elapsed>500?'warning':'info',category:'Performance',message:`Live Channel editor loaded in ${elapsed} ms (${warm?'cached criteria':'full library fallback'})`}).catch(()=>{})}
   };
   useEffect(()=>{void refresh()},[]);
 

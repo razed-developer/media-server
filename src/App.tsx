@@ -151,7 +151,192 @@ function App() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [hiddenItems, setHiddenItems] = useState<MediaItem[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [avatars, setAvatars] = useState<Record<string, UserAvatar?];�h��춻�q�^uctedPlaylist && <><PageHero eyebrow="PLAYLISTS" title="Playlists" subtitle={`${playlists.length} playlists`} /><button className="primary" onClick={() => void makePlaylist()}><Plus size={18} />New playlist</button><section className="playlist-grid">{playlists.map(playlist => { const first = playlist.mediaIds.map(id => items.find(item => item.id === id)).find(Boolean); return <article className="playlist-card" key={playlist.id} onClick={() => setSelectedPlaylistId(playlist.id)} onContextMenu={event => openMenu(event, { type: 'playlist', playlist })}>{first?.posterUrl || first?.thumbnailUrl ? <img src={resolveMediaUrl(first.posterUrl || first.thumbnailUrl)} alt="" /> : <div className="playlist-placeholder"><ListVideo size={40} /></div>}<div><h3>{playlist.name}</h3><p>{playlist.mediaIds.length} items</p></div></article>; })}</section></>}
+  const [avatars, setAvatars] = useState<Record<string, UserAvatar>>({});
+  const [activeUserId, setActiveUserState] = useState(getActiveUserId());
+  const [profileMenu, setProfileMenu] = useState(false);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [status, setStatus] = useState<ServerStatus>(fallbackStatus);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary>(emptyAnalytics);
+  const [, setThemeState] = useState<ThemeName>('onyx');
+  const [splitContinueWatching, setSplitContinueWatching] = useState(false);
+  const [query, setQuery] = useState('');
+  const [section, setSection] = useState<Section>(projectorMode ? 'live' : 'home');
+  const [tvView, setTvView] = useState<TvView>('season');
+  const [selectedShowTitle, setSelectedShowTitle] = useState<string | null>(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<MediaItem | null>(null);
+  const [pausedMedia, setPausedMedia] = useState<MediaItem | null>(null);
+  const [matchItem, setMatchItem] = useState<MediaItem | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(isDesktop);
+  const [authenticated, setAuthenticated] = useState(isDesktop);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [subtitleChoice, setSubtitleChoice] = useState('off');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lastProgressSaveRef = useRef(0);
+  const lastWatchTickRef = useRef(Date.now());
+  const activeUser = users.find(user => user.id === activeUserId) ?? users[0];
+
+  const applyTheme = (value: ThemeName) => { setThemeState(value); document.documentElement.dataset.theme = value; };
+  const refresh = async () => {
+    const started=performance.now();
+    try {
+      window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Loading shows…'}}));
+      const [library, serverStatus, prefs] = await Promise.all([listMedia(), getServerStatus(), getUserPreferences()]);
+      setItems(library); setStatus(serverStatus); applyTheme(prefs.theme); setSplitContinueWatching(prefs.splitContinueWatching); setError(null);
+      const optional = await Promise.allSettled([listPlaylists(), getAnalytics(), listUsers(), listUserAvatars()] as const);
+      const playlistData = optional[0].status === 'fulfilled' ? optional[0].value : [];
+      setPlaylists(playlistData);
+      if (optional[1].status === 'fulfilled') setAnalytics(optional[1].value);
+      if (optional[2].status === 'fulfilled') setUsers(optional[2].value);
+      if (optional[3].status === 'fulfilled') setAvatars(Object.fromEntries(optional[3].value.map(avatar => [avatar.userId, avatar])));
+      const showMap=new Map<string,{title:string;posterUrl?:string;episodeCount:number}>();
+      for(const item of library){if(item.kind!=='episode'||!item.showTitle)continue;const current=showMap.get(item.showTitle);showMap.set(item.showTitle,{title:item.showTitle,posterUrl:current?.posterUrl??item.posterUrl??item.thumbnailUrl,episodeCount:(current?.episodeCount??0)+1})}
+      sessionStorage.setItem(`onyx-live-shows:${getActiveUserId()}`,JSON.stringify([...showMap.values()].sort((a,b)=>a.title.localeCompare(b.title))));
+      sessionStorage.setItem(`onyx-live-criteria:${getActiveUserId()}`,JSON.stringify({shows:[...showMap.keys()].sort((a,b)=>a.localeCompare(b)),genres:[...new Set(library.flatMap(item=>item.genres??[]))].sort((a,b)=>a.localeCompare(b)),playlists:playlistData}));
+      window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Preparing your library…'}}));
+      const elapsed=Math.round(performance.now()-started);if(isDesktop)void invoke('record_client_activity',{level:elapsed>1000?'warning':'info',category:'Performance',message:`Initial UI data load completed in ${elapsed} ms for ${library.length} media items`}).catch(()=>{});
+    } catch (cause) { setError(String(cause)); }
+  };
+  const loadUsers = async () => {
+    const values = await listUsers(); let id = getActiveUserId();
+    const requested=requestedProfileSlug();const matched=requested?values.find(user=>profileSlug(user.name)===requested):undefined;if(matched){id=matched.id;setActiveUserId(id);setActiveUserState(id)}
+    if (!values.some(user => user.id === id)) { id = values[0]?.id ?? 'owner'; setActiveUserId(id); setActiveUserState(id); }
+    setUsers(values); return id;
+  };
+  useEffect(() => { let cancelled=false; const bootstrap = async () => {
+    if (!isDesktop) { try { const auth = await getAuthStatus(); setAuthenticated(auth.authenticated); setAuthChecked(true); if (!auth.authenticated) return; } catch (cause) { setAuthChecked(true); setError(String(cause)); return; } }
+    while(!cancelled){try { window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Connecting to server…'}}));await loadUsers(); await refresh();if(!cancelled)window.dispatchEvent(new Event('onyx-app-ready'));return; } catch (cause) { setError(String(cause));window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Waiting for the Onyx server…'}}));if(!isDesktop)return;await new Promise(resolve=>window.setTimeout(resolve,750)); }}
+  }; void bootstrap(); return()=>{cancelled=true}; }, []);
+  useEffect(() => { const close = () => setContextMenu(null); window.addEventListener('click', close); window.addEventListener('blur', close); return () => { window.removeEventListener('click', close); window.removeEventListener('blur', close); }; }, []);
+  useEffect(() => {
+    const reloadSubtitles = () => { void listMedia().then(library => { setItems(library); setSelected(current => current ? (library.find(item => item.id === current.id) ?? current) : current); }).catch(() => undefined); };
+    window.addEventListener('onyx-subtitle-downloaded', reloadSubtitles);
+    return () => window.removeEventListener('onyx-subtitle-downloaded', reloadSubtitles);
+  }, []);
+
+  const movies = useMemo(() => items.filter(i => i.kind === 'movie'), [items]);
+  const specials = useMemo(() => items.filter(i => i.kind === 'special'), [items]);
+  const specialGroups = useMemo(() => {
+    const groups = new Map<string, MediaItem[]>();
+    for (const item of specials) {
+      const parts = item.path.replace(/\\/g, '/').split('/').filter(Boolean);
+      const folder = parts.length > 1 ? parts[parts.length - 2] : 'Unsorted';
+      groups.set(folder, [...(groups.get(folder) ?? []), item]);
+    }
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, values]) => ({ folder, values }));
+  }, [specials]);
+  const episodes = useMemo(() => items.filter(i => i.kind === 'episode').sort((a, b) => (a.showTitle ?? '').localeCompare(b.showTitle ?? '') || (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0)), [items]);
+  const makeShows = (source: MediaItem[]) => {
+    const grouped = new Map<string, MediaItem[]>();
+    for (const episode of source.filter(i => i.kind === 'episode')) { const title = episode.showTitle?.trim() || 'TV'; grouped.set(title, [...(grouped.get(title) ?? []), episode]); }
+    return [...grouped.entries()].map(([title, showEpisodes]) => ({ title, episodes: showEpisodes, representative: showEpisodes[0], seasons: new Set(showEpisodes.map(e => e.season ?? 0)).size, addedAt: Math.max(...showEpisodes.map(e => e.addedAt ?? 0)) })).sort((a, b) => a.title.localeCompare(b.title));
+  };
+  const shows = useMemo<TvShow[]>(() => makeShows(episodes), [episodes]);
+  const hiddenShows = useMemo<TvShow[]>(() => makeShows(hiddenItems), [hiddenItems]);
+  const hiddenMovies = useMemo(() => hiddenItems.filter(i => i.kind === 'movie'), [hiddenItems]);
+  const historyItems = useMemo(() => items.filter(item => Boolean(item.lastWatchedAt)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)), [items]);
+  const continueItems = useMemo(() => items.filter(item => item.progressSeconds > 0 && (!item.durationSeconds || item.progressSeconds / item.durationSeconds < .995)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)).slice(0, 14), [items]);
+  const continueMovies = useMemo(() => continueItems.filter(item => item.kind === 'movie'), [continueItems]);
+  const continueEpisodes = useMemo(() => continueItems.filter(item => item.kind === 'episode'), [continueItems]);
+  const recentMovies = useMemo(() => [...movies].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 12), [movies]);
+  const recentShows = useMemo(() => [...shows].sort((a, b) => b.addedAt - a.addedAt).slice(0, 12), [shows]);
+  const selectedShow = useMemo(() => shows.find(s => s.title === selectedShowTitle) ?? null, [shows, selectedShowTitle]);
+  const selectedPlaylist = useMemo(() => playlists.find(p => p.id === selectedPlaylistId) ?? null, [playlists, selectedPlaylistId]);
+  const playlistItems = useMemo(() => selectedPlaylist?.mediaIds.map(id => items.find(item => item.id === id)).filter((item): item is MediaItem => Boolean(item)) ?? [], [selectedPlaylist, items]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleMovies = useMemo(() => movies.filter(i => !normalizedQuery || `${i.title} ${i.year ?? ''} ${i.genres?.join(' ') ?? ''}`.toLowerCase().includes(normalizedQuery)), [movies, normalizedQuery]);
+  const visibleShows = useMemo(() => shows.filter(s => !normalizedQuery || s.title.toLowerCase().includes(normalizedQuery) || s.episodes.some(e => `${e.title} ${e.genres?.join(' ') ?? ''}`.toLowerCase().includes(normalizedQuery))), [shows, normalizedQuery]);
+  const visibleHistory = useMemo(() => historyItems.filter(i => !normalizedQuery || `${i.title} ${i.showTitle ?? ''}`.toLowerCase().includes(normalizedQuery)), [historyItems, normalizedQuery]);
+  const showEpisodes = useMemo(() => selectedShow?.episodes.filter(i => !normalizedQuery || `${i.title} ${i.season ?? ''} ${i.episode ?? ''}`.toLowerCase().includes(normalizedQuery)) ?? [], [selectedShow, normalizedQuery]);
+  const seasonGroups = useMemo(() => { const groups = new Map<number, MediaItem[]>(); for (const item of showEpisodes) { const season = item.season ?? 0; groups.set(season, [...(groups.get(season) ?? []), item]); } return [...groups.entries()].sort(([a], [b]) => a - b).map(([season, group]) => ({ season, items: group })); }, [showEpisodes]);
+
+  const switchUser = async (id: string) => {
+    if (id === activeUserId) { setProfileMenu(false); return; }
+    const name = users.find(user => user.id === id)?.name ?? 'profile';
+    window.dispatchEvent(new CustomEvent('onyx-profile-loading', { detail: { name } }));
+    setActiveUserId(id); setActiveUserState(id); setProfileMenu(false); setSelected(null); setPausedMedia(null); setSelectedShowTitle(null); setSelectedPlaylistId(null); setSection('home'); setQuery('');
+    if(!isDesktop)window.history.replaceState(null,'',`/${profileSlug(name)}`);
+    try { await Promise.all([refresh(), preloadMusicLibrary(id)]); }
+    catch (cause) { setError(String(cause)); }
+    finally { window.dispatchEvent(new Event('onyx-profile-ready')); }
+  };
+  const openHidden = async () => { try { const [visible, all] = await Promise.all([listMedia(false), listMedia(true)]); const visibleIds = new Set(visible.map(i => i.id)); setHiddenItems(all.filter(i => !visibleIds.has(i.id))); setProfileMenu(false); setSection('hidden'); } catch (cause) { setError(String(cause)); } };
+  const refreshHidden = async () => { if (section !== 'hidden') return; const [visible, all] = await Promise.all([listMedia(false), listMedia(true)]); const visibleIds = new Set(visible.map(i => i.id)); setItems(visible); setHiddenItems(all.filter(i => !visibleIds.has(i.id))); };
+  const openMenu = (event: ReactMouseEvent, target: MenuTarget, hiddenView = false) => { event.preventDefault(); event.stopPropagation(); setContextMenu({ x: Math.min(event.clientX, window.innerWidth - 250), y: Math.min(event.clientY, window.innerHeight - 400), target, hiddenView }); };
+  const submitLogin = async (event: FormEvent) => { event.preventDefault(); setLoginBusy(true); setError(null); try { await login(loginPassword); setAuthenticated(true); setLoginPassword(''); await loadUsers(); await refresh(); } catch (cause) { setError(String(cause)); } finally { setLoginBusy(false); } };
+  const signOut = async () => { await logout(); setAuthenticated(false); setItems([]); setPlaylists([]); };
+  const editLocalShow = async (show: TvShow) => { if (!isDesktop) return; const title = window.prompt('Correct local TV show title:', show.title)?.trim(); if (!title) return; try { setItems(await identifyShow(show.representative.id, title)); if (selectedShowTitle === show.title) setSelectedShowTitle(title); } catch (cause) { setError(String(cause)); } };
+  const editLocalIdentification = async (item: MediaItem) => { if (!isDesktop) return; try { let updated: MediaItem[]; if (item.kind === 'movie') { const title = window.prompt('Correct local movie title:', item.title)?.trim(); if (!title) return; updated = await identifyItem(item.id, { title, year: numberPrompt('Release year (optional):', item.year), kind: 'movie' }); } else { const showTitle = window.prompt('Correct local TV show title:', item.showTitle ?? '')?.trim(); if (!showTitle) return; updated = await identifyItem(item.id, { title: window.prompt('Episode title:', item.title)?.trim() || item.title, showTitle, season: numberPrompt('Season number:', item.season), episode: numberPrompt('Episode number:', item.episode), kind: 'episode' }); } setItems(updated); } catch (cause) { setError(String(cause)); } };
+  const resetLocalIdentification = async (item: MediaItem) => { if (!isDesktop || !window.confirm('Reset local filename/folder identification to automatic detection?')) return; try { setItems(await resetIdentification(item.id)); } catch (cause) { setError(String(cause)); } };
+  const resetWatched = async (ids: string[]) => { try { setItems(await resetWatchStatus(ids)); if (selected && ids.includes(selected.id)) setSelected(existing => existing ? { ...existing, progressSeconds: 0, lastWatchedAt: undefined } : existing); } catch (cause) { setError(String(cause)); } };
+  const hideMedia = async (item: MediaItem, hidden: boolean) => { try { setItems(await setHidden('media', item.id, hidden)); if (hidden && selected?.id === item.id) setSelected(null); await refreshHidden(); } catch (cause) { setError(String(cause)); } };
+  const hideShow = async (show: TvShow, hidden: boolean) => { try { let updated = await setHidden('show', show.title, hidden); if (!hidden) for (const episode of show.episodes) updated = await setHidden('media', episode.id, false); setItems(updated); if (hidden && selectedShowTitle === show.title) setSelectedShowTitle(null); await refreshHidden(); } catch (cause) { setError(String(cause)); } };
+  const makePlaylist = async (ids: string[] = []) => { const name = (await dialog.prompt({title:'New playlist',message:'Give this playlist a name.',label:'Playlist name',placeholder:'Weekend movies',confirmLabel:'Create'}))?.trim(); if (!name) return; try { let updated = await createPlaylist(name); const created = updated.find(p => p.name.toLowerCase() === name.toLowerCase()); if (created) { for (const id of ids) updated = await addToPlaylist(created.id, id); setSelectedPlaylistId(created.id); } setPlaylists(updated); setSection('playlists'); } catch (cause) { setError(String(cause)); } };
+  const addIdsToPlaylist = async (playlistId: string, ids: string[]) => { try { let updated = playlists; for (const id of ids) updated = await addToPlaylist(playlistId, id); setPlaylists(updated); } catch (cause) { setError(String(cause)); } };
+  const removePlaylistItem = async (playlistId: string, mediaId: string) => { try { setPlaylists(await removeFromPlaylist(playlistId, mediaId)); } catch (cause) { setError(String(cause)); } };
+  const removePlaylist = async (playlist: Playlist) => { if (!window.confirm(`Delete playlist “${playlist.name}”?`)) return; try { setPlaylists(await deletePlaylist(playlist.id)); if (selectedPlaylistId === playlist.id) setSelectedPlaylistId(null); } catch (cause) { setError(String(cause)); } };
+  const startPlayback = (item: MediaItem) => { let next = item; if (item.durationSeconds && item.progressSeconds > 0 && 1 - item.progressSeconds / item.durationSeconds <= .1) { const resume = window.confirm('Less than 10% remains.\n\nOK: continue where you left off\nCancel: restart from the beginning'); if (!resume) next = { ...item, progressSeconds: 0 }; } lastWatchTickRef.current = Date.now(); setPausedMedia(null); startTransition(() => setSelected(next)); setSubtitleChoice('off'); };
+  const saveProgress = async (force = false) => { if (!selected || !videoRef.current) return; const current = Math.floor(videoRef.current.currentTime); if (!force && Math.abs(current - lastProgressSaveRef.current) < 15) return; const now = Date.now(); const elapsed = videoRef.current.paused ? 0 : Math.min(30, Math.max(0, Math.round((now - lastWatchTickRef.current) / 1000))); lastWatchTickRef.current = now; lastProgressSaveRef.current = current; try { await persistProgress(selected.id, current, elapsed); const stamp = Math.floor(Date.now() / 1000); setItems(existing => existing.map(item => item.id === selected.id ? { ...item, progressSeconds: current, lastWatchedAt: stamp } : item)); } catch { /* best-effort playback persistence */ } };
+  const closePlayer = () => { void saveProgress(true); setSelected(null); setSubtitleChoice('off'); };
+  const pauseForNavigation = () => { if (!selected) return; const current = Math.floor(videoRef.current?.currentTime ?? selected.progressSeconds); void saveProgress(true); videoRef.current?.pause(); setPausedMedia({ ...selected, progressSeconds: current }); startTransition(() => setSelected(null)); setSubtitleChoice('off'); };
+  const resumePaused = () => { if (!pausedMedia) return; const latest = items.find(item => item.id === pausedMedia.id) ?? pausedMedia; lastWatchTickRef.current = Date.now(); setSelected({ ...latest, progressSeconds: pausedMedia.progressSeconds }); setPausedMedia(null); setSubtitleChoice('off'); };
+  useEffect(() => { const video = videoRef.current; if (!selected || !video) return; lastProgressSaveRef.current = selected.progressSeconds; lastWatchTickRef.current = Date.now(); const resume = () => { if (selected.progressSeconds > 5 && video.currentTime < 1) video.currentTime = selected.progressSeconds; }; video.addEventListener('loadedmetadata', resume); return () => video.removeEventListener('loadedmetadata', resume); }, [selected]);
+
+  if (!authChecked) return <div className="login-shell"><div className="login-card"><div className="brand-mark">O</div><h1>Onyx</h1><p>Connecting to your media server…</p></div></div>;
+  if (!isDesktop && !authenticated) return <div className="login-shell"><form className="login-card" onSubmit={submitLogin}><div className="brand-mark">O</div><p className="eyebrow">PRIVATE LIBRARY</p><h1>Onyx</h1><p>Enter the server access password.</p><input type="password" autoFocus autoComplete="current-password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Password" />{error && <div className="login-error">{error}</div>}<button className="primary" type="submit" disabled={loginBusy || !loginPassword}>{loginBusy ? 'Signing in…' : 'Sign in'}</button></form></div>;
+
+  const playableSubtitles = selected?.subtitles.filter(s => s.url) ?? [];
+  const showBackdrop = selectedShow?.representative.backdropUrl;
+  const showSocialKey = selectedShow ? socialKey(selectedShow.representative) : '';
+  const changeSubtitle = (value: string) => { setSubtitleChoice(value); const video = videoRef.current; if (!video) return; for (let i = 0; i < video.textTracks.length; i++) video.textTracks[i].mode = value === String(i) ? 'showing' : 'disabled'; };
+  const navigate = (next: Section) => { if (selected) pauseForNavigation(); setSection(next); setSelectedShowTitle(null); setSelectedPlaylistId(null); setQuery(''); };
+  const openRecommendation = (entry: RecommendationEntry) => {
+    if (entry.targetType === 'movie') {
+      const movie = movies.find(item => socialKey(item) === entry.targetKey || item.title === entry.title);
+      if (movie) startPlayback(movie);
+    } else {
+      const show = shows.find(value => socialKey(value.representative) === entry.targetKey || value.title === entry.title);
+      if (show) { setSection('tv'); setSelectedShowTitle(show.title); setQuery(''); }
+    }
+  };
+
+  const sidebar = <aside className="sidebar">
+    <button className={section === 'home' ? 'active' : ''} onClick={() => navigate('home')}><Home size={19} />Home</button>
+    <button className={section === 'movies' ? 'active' : ''} onClick={() => navigate('movies')}><Film size={19} />Movies</button>
+    <button className={section === 'tv' ? 'active' : ''} onClick={() => navigate('tv')}><Tv size={19} />TV</button>
+    <button className={section === 'specials' ? 'active' : ''} onClick={() => navigate('specials')}><FolderOpen size={19} />Specials</button>
+    <button className={section === 'live' ? 'active' : ''} onClick={() => navigate('live')}><Radio size={19} />Live TV</button>
+    <button className={section === 'music' ? 'active' : ''} onClick={() => navigate('music')}><Music2 size={19} />Music</button>
+    <button className={section === 'history' ? 'active' : ''} onClick={() => navigate('history')}><History size={19} />History</button>
+    <button className={section === 'playlists' ? 'active' : ''} onClick={() => navigate('playlists')}><ListVideo size={19} />Playlists</button>
+    <button className={section === 'analytics' ? 'active' : ''} onClick={() => navigate('analytics')}><BarChart3 size={19} />Analytics</button>
+    <div className="sidebar-spacer" />
+    {pausedMedia && <button className="sidebar-resume" onClick={resumePaused} title={`Resume ${pausedMedia.title}`}><Play size={16} fill="currentColor" /><span><small>Resume</small>{pausedMedia.kind === 'episode' ? pausedMedia.showTitle ?? pausedMedia.title : pausedMedia.title}</span></button>}
+    <SleepTimer />
+    <button className={section === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}><Settings size={19} />Settings</button>
+  </aside>;
+
+  const shell = projectorMode ? <div className="projector-shell">
+    {error && <div className="error-banner">{error}</div>}
+    <SleepTimer projector />
+    {activeUser?<LiveChannelsView media={items} onOpenSettings={() => undefined} projector userName={activeUser.name} />:<div className="live-empty">Loading profile…</div>}
+  </div> : <div className={`app-shell ${isDesktop ? 'desktop-shell' : ''}`}>
+    <header className="topbar"><button className="brand brand-button" onClick={() => navigate('home')}><span className="brand-mark">O</span><span>Onyx</span></button>{selected ? <div className="now-playing-title">{selected.kind === 'episode' ? selected.showTitle : selected.title}</div> : section === 'music' || section === 'live' || section === 'settings' ? <div /> : <div className="search"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search Onyx" /></div>}<div className="topbar-right"><button className={`server-logo-status ${status.running ? 'online' : ''}`} title={`${status.running ? 'Connected' : 'Disconnected'} · ${status.localUrl}\nClick to copy`} aria-label={`${status.running ? 'Connected to' : 'Disconnected from'} ${status.localUrl}. Click to copy.`} onClick={() => void navigator.clipboard.writeText(status.localUrl)}><img src="/app-icon.png" alt="" /></button><div className="profile-wrap"><button className="profile-button" onClick={event => { event.stopPropagation(); setProfileMenu(v => !v); }}>{activeUser?.name ?? 'User'}<ChevronDown size={14} /></button>{profileMenu && <div className="profile-menu" onClick={event => event.stopPropagation()}><div className="profile-label">Profiles</div>{users.map(user => <button key={user.id} className={user.id === activeUserId ? 'active' : ''} onClick={() => void switchUser(user.id)}><AvatarBadge avatar={avatars[user.id]} name={user.name} size="sm" />{user.name}{user.isAdmin && <small>Owner</small>}</button>)}<div className="context-separator" /><button onClick={() => void openHidden()}><EyeOff size={15} />Hidden media</button>{!isDesktop && <button onClick={() => void signOut()}><LogOut size={15} />Sign out</button>}</div>}</div></div></header>
+    {sidebar}
+    {selected ? <main className="content player-content"><section className="player-page" style={selected.backdropUrl ? { backgroundImage: `linear-gradient(rgba(4,6,8,.82),rgba(4,6,8,.98)),url(${resolveMediaUrl(selected.backdropUrl)})` } : undefined}><div className="player-page-header"><button className="back-button" data-player-back onClick={closePlayer}><ArrowLeft size={18} />Back</button><div><p className="eyebrow">{selected.kind === 'episode' ? selected.showTitle : 'MOVIE'}</p><h1>{selected.title}</h1><p>{selected.kind === 'episode' ? episodeLabel(selected) : selected.year ?? ''}</p><MetadataSummary item={selected} />{isDesktop && selected.kind === 'movie' && <SocialBar targetType="movie" targetKey={socialKey(selected)} title={selected.title} posterUrl={selected.posterUrl} users={users} />}</div></div><div className="video-stage"><video ref={videoRef} controls autoPlay preload="auto" onPause={() => void saveProgress(true)} onTimeUpdate={() => void saveProgress()}><source src={resolveMediaUrl(selected.streamUrl)} />{playableSubtitles.map(subtitle => <track key={subtitle.url} kind="subtitles" src={resolveMediaUrl(subtitle.url)} srcLang={subtitle.language} label={subtitle.label} />)}</video></div><div className="player-toolbar"><div className="player-meta">{[selected.container, selected.videoCodec, selected.audioCodec, selected.height ? `${selected.height}p` : null].filter(Boolean).join(' · ')}</div><label className="subtitle-control"><Subtitles size={18} /><span>Subtitles</span><select value={subtitleChoice} onChange={event => changeSubtitle(event.target.value)}><option value="off">Off</option>{playableSubtitles.map((subtitle, index) => <option key={subtitle.url} value={String(index)}>{subtitle.label}{subtitle.forced ? ' · Forced' : ''}</option>)}</select></label></div></section></main> : <main className="content">
+      {error && <div className="error-banner">{error}</div>}
+      {section === 'home' && <div className="home-page"><section className="onyx-hero"><p className="eyebrow">WELCOME BACK</p><h1>{activeUser?.name ? `${activeUser.name}'s Onyx` : 'Onyx'}</h1><p>Your movies, television and optional music—without the clutter.</p><div className="hero-links"><button onClick={() => navigate('movies')}>View movies</button><button onClick={() => navigate('tv')}>View TV shows</button><button onClick={() => navigate('live')}>Live TV</button><button onClick={() => navigate('music')}>Open music</button></div></section>{isDesktop && activeUser && <RecommendationsRail userId={activeUser.id} onOpen={openRecommendation} />}{!splitContinueWatching && continueItems.length > 0 && <Rail title="Continue Watching">{continueItems.map(item => <MediaCard key={item.id} item={item} artwork="poster" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</Rail>}{splitContinueWatching && continueMovies.length > 0 && <Rail title="Continue Watching Movies">{continueMovies.map(item => <MediaCard key={item.id} item={item} artwork="poster" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</Rail>}{splitContinueWatching && continueEpisodes.length > 0 && <Rail title="Continue Watching Shows">{continueEpisodes.map(item => <MediaCard key={item.id} item={item} artwork="thumbnail" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</Rail>}<Rail title="Recently Added Shows" actionLabel="View shows" onAction={() => navigate('tv')}>{recentShows.map(show => <ShowCard key={show.title} show={show} onOpen={value => { setSection('tv'); setSelectedShowTitle(value.title); }} onMenu={(e, v) => openMenu(e, { type: 'show', show: v })} />)}</Rail><Rail title="Recently Added Movies" actionLabel="View movies" onAction={() => navigate('movies')}>{recentMovies.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</Rail></div>}
+      {section === 'movies' && <><PageHero eyebrow="MOVIES" title="Movies" subtitle={`${movies.length} titles`} /><section className="gallery">{visibleMovies.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
+      {section === 'tv' && !selectedShow && <><PageHero eyebrow="TELEVISION" title="TV Shows" subtitle={`${shows.length} shows · ${episodes.length} episodes`} /><section className="gallery show-gallery">{visibleShows.map(show => <ShowCard key={show.title} show={show} onOpen={value => { setSelectedShowTitle(value.title); setQuery(''); }} onMenu={(e, v) => openMenu(e, { type: 'show', show: v })} />)}</section></>}
+      {section === 'tv' && selectedShow && <><section className="show-hero compact-hero" style={showBackdrop ? { backgroundImage: `linear-gradient(90deg,var(--bg) 0%,rgba(5,7,10,.80) 60%),url(${resolveMediaUrl(showBackdrop)})` } : undefined}><div><button className="back-button" onClick={() => { setSelectedShowTitle(null); setQuery(''); }}><ArrowLeft size={18} />All TV shows</button><p className="eyebrow">TV SHOW</p><h1>{selectedShow.title}</h1><p>{selectedShow.seasons} seasons · {selectedShow.episodes.length} episodes {allWatched(selectedShow.episodes) ? '· Watched' : ''}</p><MetadataSummary item={selectedShow.representative} />{isDesktop && <SocialBar targetType="show" targetKey={showSocialKey} title={selectedShow.title} posterUrl={selectedShow.representative.posterUrl} users={users} />}</div><div className="view-toggle"><button className={tvView === 'season' ? 'active' : ''} onClick={() => setTvView('season')}><Layers3 size={17} />By season</button><button className={tvView === 'list' ? 'active' : ''} onClick={() => setTvView('list')}><List size={17} />All episodes</button></div></section>{tvView === 'list' ? <section className="gallery episode-grid">{showEpisodes.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section> : <div className="season-groups">{seasonGroups.map(group => <section className="season-section" key={group.season}><div className="season-heading" onContextMenu={e => openMenu(e, { type: 'season', showTitle: selectedShow.title, season: group.season, items: group.items })}><div><p>{selectedShow.title}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`} {allWatched(group.items) && <Check size={18} />}</h2><ProgressLine value={groupPercent(group.items)} /></div><span>{group.items.length} episodes</span></div><div className="gallery">{group.items.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</div></section>)}</div>}</>}
+      {section === 'specials' && <><PageHero eyebrow="SPECIALS" title="Specials & Documentaries" subtitle={`${specials.length} files`} /><div className="season-groups">{specialGroups.map(group => <section className="season-section" key={group.folder}><div className="season-heading"><div><p>SPECIALS</p><h2>{group.folder}</h2></div><span>{group.values.length} {group.values.length === 1 ? 'file' : 'files'}</span></div><div className="gallery episode-grid">{group.values.map(item => <MediaCard key={item.id} item={item} artwork="thumbnail" onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</div></section>)}</div></>}
+      {section === 'live' && <LiveChannelsView media={items} onOpenSettings={() => navigate('settings')} />}
+      {section === 'music' && <MusicView />}
+      {section === 'history' && <><PageHero eyebrow="HISTORY" title="Recently watched" subtitle={`${historyItems.length} items`} /><section className="gallery">{visibleHistory.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
+      {section === 'playlists' && !selectedPlaylist && <><PageHero eyebrow="PLAYLISTS" title="Playlists" subtitle={`${playlists.length} playlists`} /><button className="primary" onClick={() => void makePlaylist()}><Plus size={18} />New playlist</button><section className="playlist-grid">{playlists.map(playlist => { const first = playlist.mediaIds.map(id => items.find(item => item.id === id)).find(Boolean); return <article className="playlist-card" key={playlist.id} onClick={() => setSelectedPlaylistId(playlist.id)} onContextMenu={event => openMenu(event, { type: 'playlist', playlist })}>{first?.posterUrl || first?.thumbnailUrl ? <img src={resolveMediaUrl(first.posterUrl || first.thumbnailUrl)} alt="" /> : <div className="playlist-placeholder"><ListVideo size={40} /></div>}<div><h3>{playlist.name}</h3><p>{playlist.mediaIds.length} items</p></div></article>; })}</section></>}
       {section === 'playlists' && selectedPlaylist && <><PageHero eyebrow="PLAYLIST" title={selectedPlaylist.name} subtitle={`${playlistItems.length} items`} /><button className="back-button playlist-back" onClick={() => setSelectedPlaylistId(null)}><ArrowLeft size={18} />All playlists</button><section className="gallery">{playlistItems.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
       {section === 'analytics' && <AnalyticsPage analytics={analytics} />}
       {section === 'settings' && <SettingsPage onChanged={() => void refresh()} />}

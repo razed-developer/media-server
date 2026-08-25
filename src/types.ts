@@ -17,6 +17,23 @@ export interface SubtitleTrack {
   forced: boolean;
   default: boolean;
 }
+export interface CaptionJob {
+  mediaId: string;
+  title: string;
+  status: "queued" | "extracting" | "transcribing" | "complete" | "failed";
+  message?: string;
+  queuedAt: number;
+}
+export interface CaptionStatus {
+  enabled: boolean;
+  autoNew: boolean;
+  language: string;
+  executable?: string;
+  modelPath?: string;
+  ready: boolean;
+  activeMediaId?: string;
+  jobs: CaptionJob[];
+}
 export interface MediaItem {
   id: string;
   title: string;

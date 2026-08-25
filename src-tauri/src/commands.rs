@@ -5,7 +5,7 @@ use crate::{
 };
 use argon2::{password_hash::{PasswordHasher, SaltString}, Argon2};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, net::UdpSocket, path::{Path, PathBuf}, process::Command};
+use std::{collections::HashSet, net::UdpSocket, path::{Path, PathBuf}, process::Command, sync::Arc};
 use tauri::State as TauriState;
 use uuid::Uuid;
 
@@ -207,11 +207,14 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
             a_key.cmp(&b_key)
         });
         if let Ok(mut progress) = state.scan_progress.write() { progress.phase = "saving".into(); }
+        let previous_ids = state.media.read().map_err(|_| "Media lock poisoned")?.iter().map(|item| item.id.clone()).collect::<HashSet<_>>();
         database::replace_library(&state.database_path, &media)?;
         let metadata_media = media.iter().filter(|item| item.kind != "special").cloned().collect::<Vec<_>>();
         metadata::reconcile_local_entities(&state.database_path, &metadata_media)?;
         *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone();
+        let new_ids = media.iter().filter(|item| !previous_ids.contains(&item.id)).map(|item| item.id.clone()).collect::<Vec<_>>();
         crate::activity::info("Library", format!("Library scan complete: {} media files", media.len()));
+        crate::captions::queue_new_media(&Arc::new((*state).clone()), &new_ids);
         Ok(media)
     })();
 

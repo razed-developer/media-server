@@ -14,7 +14,14 @@ pub struct Settings {
     #[serde(default)] pub access_password_hash: Option<String>,
     #[serde(default)] pub setup_complete: bool,
     #[serde(default)] pub ibroadcast_client_id: Option<String>,
+    #[serde(default)] pub captions_enabled: bool,
+    #[serde(default)] pub captions_auto_new: bool,
+    #[serde(default = "default_caption_language")] pub caption_language: String,
+    #[serde(default)] pub caption_executable: Option<String>,
+    #[serde(default)] pub caption_model_path: Option<String>,
 }
+
+fn default_caption_language() -> String { "en".into() }
 
 impl Settings {
     pub fn effective_movie_paths(&self) -> Vec<String> {
@@ -60,6 +67,7 @@ pub struct AppState {
     pub media: Arc<RwLock<Vec<MediaItem>>>,
     pub sessions: Arc<RwLock<HashMap<String, u64>>>,
     pub scan_progress: Arc<RwLock<ScanProgress>>,
+    pub captions: crate::captions::CaptionRuntime,
 }
 
 pub type Shared = Arc<AppState>;

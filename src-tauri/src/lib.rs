@@ -5,6 +5,7 @@ mod assets;
 mod backup;
 mod commands;
 mod child_process;
+mod captions;
 mod database;
 mod household_feed;
 mod ibroadcast;
@@ -64,6 +65,7 @@ pub fn run() {
         settings: Arc::new(RwLock::new(load_settings(&settings_path))),
         media: Arc::new(RwLock::new(initial_media)), sessions: Arc::new(RwLock::new(HashMap::new())),
         scan_progress: Arc::new(RwLock::new(ScanProgress::default())),
+        captions: captions::CaptionRuntime::default(),
     });
 
     tauri::Builder::default()
@@ -107,6 +109,8 @@ pub fn run() {
             subtitles::subtitle_provider_status, subtitles::subtitle_provider_save,
             subtitles::subtitle_provider_clear, subtitles::subtitle_provider_test,
             subtitles::subtitle_search, subtitles::subtitle_download,
+            captions::caption_status, captions::caption_configure,
+            captions::caption_generate, captions::caption_generate_missing,
             user_features::user_avatars, user_features::user_avatar_set_builtin,
             user_features::user_avatar_set_custom, user_features::user_reactions,
             user_features::user_reaction_set, user_features::user_recommendation_send,

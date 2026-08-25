@@ -31,6 +31,7 @@ import './onyxDialogs.css';
 import './libraryRoots.css';
 import './remote.css';
 import './subtitleFinder.css';
+import './captions.css';
 import './playbackContinuity.css';
 import './startupWarmup.css';
 import './continuityPolish.css';

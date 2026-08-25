@@ -1,0 +1,4 @@
+.generate-subtitles-button{margin-left:.45rem}
+.caption-path-row{display:flex;gap:.55rem;align-items:center}
+.caption-path-row input{flex:1;min-width:0}
+.caption-job-summary{display:flex;gap:.55rem;align-items:center;margin-top:.8rem;color:var(--muted)}

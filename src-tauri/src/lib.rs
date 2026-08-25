@@ -12,6 +12,7 @@ mod ibroadcast;
 mod ibroadcast_oauth;
 mod library;
 mod library_health;
+mod sleep_videos;
 mod live_channels;
 mod live_server;
 mod metadata;
@@ -111,6 +112,7 @@ pub fn run() {
             subtitles::subtitle_search, subtitles::subtitle_download,
             captions::caption_status, captions::caption_configure,
             captions::caption_generate, captions::caption_generate_missing,
+            sleep_videos::sleep_video_status, sleep_videos::sleep_video_configure,
             user_features::user_avatars, user_features::user_avatar_set_builtin,
             user_features::user_avatar_set_custom, user_features::user_reactions,
             user_features::user_reaction_set, user_features::user_recommendation_send,

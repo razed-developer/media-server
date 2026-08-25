@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Moon, Sunrise } from 'lucide-react';
-import { isTauriDesktop } from '../api';
+import { getSleepVideos, isTauriDesktop, resolveMediaUrl } from '../api';
+import type { SleepVideo } from '../types';
 
 const STORAGE_KEY = 'onyx-sleep-until';
 const CHANGE_EVENT = 'onyx-sleep-timer-change';
@@ -55,6 +56,9 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
   const [until, setUntil] = useState(() => Number(localStorage.getItem(STORAGE_KEY)) || 0);
   const [sleeping, setSleeping] = useState(false);
   const [stars, setStars] = useState<Star[]>([]);
+  const [videos, setVideos] = useState<SleepVideo[]>([]);
+  const [currentVideo, setCurrentVideo] = useState<SleepVideo|null>(null);
+  const [showWake, setShowWake] = useState(false);
   const timeout = useRef<number | undefined>(undefined);
   const enteredFullscreen = useRef(false);
   const update = (next: number) => {
@@ -67,6 +71,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
     window.addEventListener(CHANGE_EVENT, changed);
     return () => window.removeEventListener(CHANGE_EVENT, changed);
   }, []);
+  useEffect(()=>{let stopped=false;const load=()=>void getSleepVideos().then(value=>{if(!stopped)setVideos(value.videos)}).catch(()=>{if(!stopped)setVideos([])});load();window.addEventListener('onyx-sleep-videos-changed',load);return()=>{stopped=true;window.removeEventListener('onyx-sleep-videos-changed',load)}},[]);
   useEffect(() => {
     window.clearTimeout(timeout.current);
     if (!until) return;
@@ -75,7 +80,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
       window.dispatchEvent(new CustomEvent('onyx-sleep-mode', { detail: true }));
       document.querySelectorAll<HTMLMediaElement>('video,audio').forEach(media => media.pause());
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
-      setStars(makeStars(280)); setSleeping(true); update(0); setLofiVolume(.32);
+      setStars(makeStars(280)); setCurrentVideo(videos.length?videos[Math.floor(Math.random()*videos.length)]:null);setShowWake(false);setSleeping(true); update(0); setLofiVolume(.32);
       if (isTauriDesktop()) void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
         const win = getCurrentWindow(); enteredFullscreen.current = !(await win.isFullscreen());
         if (enteredFullscreen.current) await win.setFullscreen(true);
@@ -84,7 +89,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
     const remaining = until - Date.now();
     if (remaining <= 0) begin(); else timeout.current = window.setTimeout(begin, remaining);
     return () => window.clearTimeout(timeout.current);
-  }, [until]);
+  }, [until,videos]);
   const choose = (minutes: number) => {
     if (!minutes) { update(0); return; }
     prepareLofi(); void audioContext?.resume(); update(minutes < 0 ? Date.now() : Date.now() + minutes * 60_000);
@@ -95,13 +100,17 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
     if (enteredFullscreen.current && isTauriDesktop()) void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().setFullscreen(false)).catch(() => undefined);
     enteredFullscreen.current = false;
   };
+  const nextVideo=()=>setCurrentVideo(current=>{if(videos.length<2)return videos[0]??null;const choices=videos.filter(video=>video.id!==current?.id);return choices[Math.floor(Math.random()*choices.length)]});
   const remainingMinutes = Math.max(0, (until - Date.now()) / 60_000);
   const selectedDuration = !until ? '' : remainingMinutes > 90 ? '120' : remainingMinutes > 45 ? '60' : '30';
-  const scene = useMemo(() => sleeping ? <div className="sleep-scene" role="dialog" aria-modal="true" aria-label="Sleep mode">
+  const scene = useMemo(() => sleeping ? <div className={`sleep-scene ${currentVideo?'has-video':''}`} role="dialog" aria-modal="true" aria-label="Sleep mode" onClick={()=>setShowWake(value=>!value)}>
+    {currentVideo&&<video key={currentVideo.id} className="sleep-video" src={resolveMediaUrl(currentVideo.url)} autoPlay muted playsInline loop={videos.length===1} onEnded={nextVideo} onError={()=>videos.length>1?nextVideo():setCurrentVideo(null)}/>}
     <div className="sleep-starfield" aria-hidden="true">{stars.map((star,index)=><i key={index} style={{left:star.left,top:star.top,width:star.size,height:star.size,opacity:star.opacity,animationDelay:star.delay,animationDuration:star.duration,background:star.color}} />)}</div>
     <div className="sleep-nebula sleep-nebula-one" /><div className="sleep-nebula sleep-nebula-two" />
-    <div className="sleep-moon" /><div className="sleep-message"><small>ONYX SLEEP MODE</small><h1>Good night</h1><p>Calm sounds will keep playing until you wake Onyx.</p><button autoFocus onClick={wake}><Sunrise size={18} />Wake up</button></div>
-  </div> : null,[sleeping,stars]);
+    {!currentVideo&&<><div className="sleep-moon" /><div className="sleep-message"><small>ONYX SLEEP MODE</small><h1>Good night</h1><p>Calm sounds will keep playing until you wake Onyx.</p></div></>}
+    {showWake&&<button className="sleep-wake" autoFocus onClick={event=>{event.stopPropagation();wake()}}><Sunrise size={15} />Wake up</button>}
+    {!showWake&&<span className="sleep-wake-hint">Click anywhere to show wake control</span>}
+  </div> : null,[sleeping,stars,currentVideo,showWake,videos]);
   return <>
     <label className={`sleep-timer ${projector ? 'projector-sleep-timer' : ''}`} title="Sleep timer">
       <Moon size={projector ? 17 : 18} />

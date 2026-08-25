@@ -205,13 +205,16 @@ fn parse_range(headers: &HeaderMap, total: u64) -> Result<Option<(u64, u64)>, ()
     Ok(Some((start, end)))
 }
 fn range_error(total: u64) -> Response { Response::builder().status(StatusCode::RANGE_NOT_SATISFIABLE).header(header::CONTENT_RANGE, format!("bytes */{total}")).body(Body::empty()).unwrap() }
-async fn direct_stream(item: &MediaItem, headers: &HeaderMap) -> Response {
-    let Ok(metadata) = tokio::fs::metadata(&item.path).await else { return StatusCode::NOT_FOUND.into_response(); }; let total = metadata.len(); if total == 0 { return StatusCode::NO_CONTENT.into_response(); }
+async fn direct_file(path: &Path, headers: &HeaderMap) -> Response {
+    let Ok(metadata) = tokio::fs::metadata(path).await else { return StatusCode::NOT_FOUND.into_response(); }; let total = metadata.len(); if total == 0 { return StatusCode::NO_CONTENT.into_response(); }
     let range = match parse_range(headers, total) { Ok(r) => r, Err(()) => return range_error(total) }; let (status, start, end) = match range { Some((s, e)) => (StatusCode::PARTIAL_CONTENT, s, e), None => (StatusCode::OK, 0, total - 1) };
-    let Ok(mut file) = File::open(&item.path).await else { return StatusCode::NOT_FOUND.into_response(); }; if start > 0 && file.seek(SeekFrom::Start(start)).await.is_err() { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); }
-    let length = end - start + 1; let body = Body::from_stream(ReaderStream::new(file.take(length))); let mime = mime_guess::from_path(&item.path).first_or_octet_stream().to_string();
+    let Ok(mut file) = File::open(path).await else { return StatusCode::NOT_FOUND.into_response(); }; if start > 0 && file.seek(SeekFrom::Start(start)).await.is_err() { return StatusCode::INTERNAL_SERVER_ERROR.into_response(); }
+    let length = end - start + 1; let body = Body::from_stream(ReaderStream::new(file.take(length))); let mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
     let mut builder = Response::builder().status(status).header(header::CONTENT_TYPE, mime).header(header::CONTENT_LENGTH, length.to_string()).header(header::ACCEPT_RANGES, "bytes"); if status == StatusCode::PARTIAL_CONTENT { builder = builder.header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}")); } builder.body(body).unwrap()
 }
+async fn direct_stream(item: &MediaItem, headers: &HeaderMap) -> Response { direct_file(Path::new(&item.path),headers).await }
+async fn api_sleep_videos(State(state):State<Shared>)->Json<crate::sleep_videos::SleepVideoStatus>{Json(crate::sleep_videos::status(&state))}
+async fn sleep_video(State(state):State<Shared>,AxumPath(id):AxumPath<String>,headers:HeaderMap)->Response{let Some(path)=crate::sleep_videos::path_for_id(&state,&id)else{return StatusCode::NOT_FOUND.into_response()};direct_file(&path,&headers).await}
 async fn ffmpeg_playback(item: &MediaItem, transcode: bool) -> Response {
     let mut command = crate::child_process::async_command("ffmpeg"); command.kill_on_drop(true).args(["-hide_banner", "-loglevel", "error", "-i"]).arg(&item.path).args(["-map", "0:v:0", "-map", "0:a:0?"]);
     if transcode { command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "192k"]); } else { command.args(["-c:v", "copy", "-c:a", "copy"]); }
@@ -249,6 +252,7 @@ fn protected_router() -> Router<Shared> {
         .route("/api/ibroadcast/stream/{track_id}", get(api_ibroadcast_stream)).route("/api/metadata/image/{size}/{file}", get(metadata_image))
         .route("/play/{id}", get(play_media)).route("/stream/{id}", get(stream_media)).route("/art/{id}/{kind}", get(artwork_route))
         .route("/subtitle/{id}/embedded/{stream_index}", get(embedded_subtitle)).route("/subtitle/{id}/{filename}", get(subtitle))
+        .route("/api/sleep-videos",get(api_sleep_videos)).route("/sleep-video/{id}",get(sleep_video))
         .merge(crate::live_server::router())
 }
 

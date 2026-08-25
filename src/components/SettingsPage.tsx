@@ -79,6 +79,7 @@ import { IbroadcastLogoKit } from "./IbroadcastLogoKit";
 import { LiveChannelsSettings } from "./LiveChannelsSettings";
 import { LibraryHealthSettings } from "./LibraryHealthSettings";
 import { SubtitleSettings } from "./SubtitleSettings";
+import { SleepVideoSettings } from "./SleepVideoSettings";
 import { UserAvatarPicker, AvatarBadge } from "./UserAvatarPicker";
 import { WishlistView } from "./WishlistView";
 import "../activityConsole.css";
@@ -1084,6 +1085,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
                 </button>
               ))}
             </div>
+            <SleepVideoSettings />
           </>
         )}
         {category === "remote" && (

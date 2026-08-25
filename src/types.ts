@@ -37,6 +37,8 @@ export interface CaptionStatus {
   activeMediaId?: string;
   jobs: CaptionJob[];
 }
+export interface SleepVideo { id: string; name: string; url: string; }
+export interface SleepVideoStatus { folder?: string; videos: SleepVideo[]; }
 export interface MediaItem {
   id: string;
   title: string;

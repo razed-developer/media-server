@@ -21,6 +21,7 @@ import type {
   RestoreReport,
   RootMapping,
   ServerStatus,
+  SleepVideoStatus,
   SetupStatus,
   ScanProgress,
   ThemeName,
@@ -43,6 +44,14 @@ export async function generateCaptions(mediaId: string, force = false): Promise<
 export async function generateMissingCaptions(): Promise<number> {
   if (!isTauriDesktop()) throw new Error("Caption generation is managed from the desktop server app.");
   return invoke<number>("caption_generate_missing");
+}
+export async function getSleepVideos(): Promise<SleepVideoStatus> {
+  if (isTauriDesktop()) return invoke<SleepVideoStatus>("sleep_video_status");
+  return json(await browserFetch(`${serverBaseUrl()}/api/sleep-videos`), "Could not load sleep videos");
+}
+export async function configureSleepVideos(path?: string): Promise<SleepVideoStatus> {
+  if (!isTauriDesktop()) throw new Error("The sleep video folder is managed from the desktop server app.");
+  return invoke<SleepVideoStatus>("sleep_video_configure", { path });
 }
 export interface IdentityInput {
   title?: string;

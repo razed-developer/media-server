@@ -19,6 +19,7 @@ pub struct Settings {
     #[serde(default = "default_caption_language")] pub caption_language: String,
     #[serde(default)] pub caption_executable: Option<String>,
     #[serde(default)] pub caption_model_path: Option<String>,
+    #[serde(default)] pub sleep_video_path: Option<String>,
 }
 
 fn default_caption_language() -> String { "en".into() }

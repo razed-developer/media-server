@@ -23,6 +23,9 @@ export interface CaptionJob {
   status: "queued" | "extracting" | "transcribing" | "complete" | "failed";
   message?: string;
   queuedAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  progressPercent: number;
 }
 export interface CaptionStatus {
   enabled: boolean;

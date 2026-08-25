@@ -146,7 +146,13 @@ Onyx processes one video at a time. It extracts temporary 16 kHz mono audio,
 runs whisper.cpp, deletes the temporary audio, and saves the completed WebVTT
 file beside the video. The media folder must therefore be writable by Onyx.
 
-After completion, the player subtitle selector shows:
+While a job is running, **Settings → Subtitles** shows the current filename,
+stage, and progress percentage. **Settings → Activity** records when that file
+is queued, when audio extraction and transcription begin, where the finished
+subtitle was saved, or the file-specific reason a job failed.
+
+After completion, Onyx refreshes the in-memory library automatically and the
+player subtitle selector shows:
 
 ```text
 English · AI generated

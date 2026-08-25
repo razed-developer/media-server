@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { BrandingEnhancer } from './components/BrandingEnhancer';
+import { CaptionStatusBridge } from './components/CaptionStatusBridge';
 import { FullscreenGuard } from './components/FullscreenGuard';
 import { GlobalMediaSearch } from './components/GlobalMediaSearch';
 import { HouseholdActivityFeed } from './components/HouseholdActivityFeed';
@@ -43,6 +44,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <OnyxDialogProvider>
       <SetupGate><StartupWarmup><App /></StartupWarmup></SetupGate>
       <BrandingEnhancer />
+      <CaptionStatusBridge />
       <QuickLibraryRefresh />
       <LibraryJumpBridge />
       <FullscreenGuard />

@@ -59,8 +59,11 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
   const [videos, setVideos] = useState<SleepVideo[]>([]);
   const [currentVideo, setCurrentVideo] = useState<SleepVideo|null>(null);
   const [showWake, setShowWake] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const timeout = useRef<number | undefined>(undefined);
   const enteredFullscreen = useRef(false);
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const update = (next: number) => {
     setUntil(next);
     if (next) localStorage.setItem(STORAGE_KEY, String(next)); else localStorage.removeItem(STORAGE_KEY);
@@ -72,6 +75,8 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
     return () => window.removeEventListener(CHANGE_EVENT, changed);
   }, []);
   useEffect(()=>{let stopped=false;const load=()=>void getSleepVideos().then(value=>{if(!stopped)setVideos(value.videos)}).catch(()=>{if(!stopped)setVideos([])});load();window.addEventListener('onyx-sleep-videos-changed',load);return()=>{stopped=true;window.removeEventListener('onyx-sleep-videos-changed',load)}},[]);
+  useEffect(()=>{if(!menuOpen)return;const close=(event:MouseEvent)=>{if(!menuRef.current?.contains(event.target as Node))setMenuOpen(false)};document.addEventListener('mousedown',close);return()=>document.removeEventListener('mousedown',close)},[menuOpen]);
+  useEffect(()=>{if(sleeping)requestAnimationFrame(()=>sceneRef.current?.focus({preventScroll:true}))},[sleeping]);
   useEffect(() => {
     window.clearTimeout(timeout.current);
     if (!until) return;
@@ -91,6 +96,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
     return () => window.clearTimeout(timeout.current);
   }, [until,videos]);
   const choose = (minutes: number) => {
+    setMenuOpen(false);
     if (!minutes) { update(0); return; }
     prepareLofi(); void audioContext?.resume(); update(minutes < 0 ? Date.now() : Date.now() + minutes * 60_000);
   };
@@ -103,7 +109,7 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
   const nextVideo=()=>setCurrentVideo(current=>{if(videos.length<2)return videos[0]??null;const choices=videos.filter(video=>video.id!==current?.id);return choices[Math.floor(Math.random()*choices.length)]});
   const remainingMinutes = Math.max(0, (until - Date.now()) / 60_000);
   const selectedDuration = !until ? '' : remainingMinutes > 90 ? '120' : remainingMinutes > 45 ? '60' : '30';
-  const scene = useMemo(() => sleeping ? <div className={`sleep-scene ${currentVideo?'has-video':''}`} role="dialog" aria-modal="true" aria-label="Sleep mode" onClick={()=>setShowWake(value=>!value)}>
+  const scene = useMemo(() => sleeping ? <div ref={sceneRef} tabIndex={0} className={`sleep-scene ${currentVideo?'has-video':''}`} role="dialog" aria-modal="true" aria-label="Sleep mode" onClick={()=>setShowWake(value=>!value)} onKeyDown={event=>{if(['Enter',' ','Select','Accept'].includes(event.key)){event.preventDefault();setShowWake(true)}}}>
     {currentVideo&&<video key={currentVideo.id} className="sleep-video" src={resolveMediaUrl(currentVideo.url)} autoPlay muted playsInline loop={videos.length===1} onEnded={nextVideo} onError={()=>videos.length>1?nextVideo():setCurrentVideo(null)}/>}
     <div className="sleep-starfield" aria-hidden="true">{stars.map((star,index)=><i key={index} style={{left:star.left,top:star.top,width:star.size,height:star.size,opacity:star.opacity,animationDelay:star.delay,animationDuration:star.duration,background:star.color}} />)}</div>
     <div className="sleep-nebula sleep-nebula-one" /><div className="sleep-nebula sleep-nebula-two" />
@@ -111,14 +117,15 @@ export function SleepTimer({ projector = false }: { projector?: boolean }) {
     {showWake&&<button className="sleep-wake" autoFocus onClick={event=>{event.stopPropagation();wake()}}><Sunrise size={15} />Wake up</button>}
     {!showWake&&<span className="sleep-wake-hint">Click anywhere to show wake control</span>}
   </div> : null,[sleeping,stars,currentVideo,showWake,videos]);
+  const timerLabel=!until?'Off':remainingMinutes>90?'2 hours':remainingMinutes>45?'1 hour':'30 min';
   return <>
-    <label className={`sleep-timer ${projector ? 'projector-sleep-timer' : ''}`} title="Sleep timer">
+    {projector?<div ref={menuRef} className="projector-sleep-control"><button className={`projector-sleep-button ${until?'active':''}`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(value=>!value)}><Moon size={17}/><span>Sleep</span><small>{timerLabel}</small></button>{menuOpen&&<div className="projector-sleep-menu" role="menu" aria-label="Sleep timer options">{[[0,'Off'],[-1,'Sleep now'],[30,'30 minutes'],[60,'1 hour'],[120,'2 hours']].map(([minutes,label])=><button key={String(minutes)} role="menuitem" autoFocus={minutes===0} onClick={()=>choose(Number(minutes))}>{label}</button>)}</div>}</div>:<label className="sleep-timer" title="Sleep timer">
       <Moon size={projector ? 17 : 18} />
-      <span>{projector ? 'Sleep' : 'Sleep timer'}</span>
+      <span>Sleep timer</span>
       <select value={selectedDuration} onChange={event => choose(Number(event.target.value))}>
         <option value="">Off</option><option value="-1">Now</option><option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option>
       </select>
-    </label>
+    </label>}
     {scene&&createPortal(scene,document.body)}
   </>;
 }

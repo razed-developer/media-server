@@ -26,7 +26,7 @@ mod user_features;
 mod user_features_server;
 
 use app_state::{app_data_dir, load_settings, AppState, ScanProgress};
-use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}, time::Instant};
+use std::{collections::HashMap, process::Command, sync::{Arc, RwLock}, time::{Duration, Instant}};
 use tauri::{path::BaseDirectory, Manager};
 
 pub use app_state::Shared;
@@ -82,10 +82,13 @@ pub fn run() {
             let web_root = if cfg!(debug_assertions) { None } else { app.path().resolve("web", BaseDirectory::Resource).ok() };
             activity::info("Server", format!("Starting browser server on port {PORT}"));
             tauri::async_runtime::spawn(async move { server::start(server_state, PORT, FUNNEL_GATEWAY_PORT, web_root).await; });
-            tauri::async_runtime::spawn_blocking(move || {
-                let phase = Instant::now();
-                if let Err(error) = metadata::reconcile_local_entities(&reconcile_path, &reconcile_items) { activity::error("Metadata", format!("Background metadata reconciliation failed: {error}")); }
-                activity::info("Performance",format!("Background metadata reconciliation: {} ms for {} items",phase.elapsed().as_millis(),reconcile_items.len()));
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                let _=tauri::async_runtime::spawn_blocking(move || {
+                    let phase = Instant::now();
+                    if let Err(error) = metadata::reconcile_local_entities(&reconcile_path, &reconcile_items) { activity::error("Metadata", format!("Background metadata reconciliation failed: {error}")); }
+                    activity::info("Performance",format!("Background metadata reconciliation: {} ms for {} items",phase.elapsed().as_millis(),reconcile_items.len()));
+                }).await;
             });
             if let Some(window) = app.get_webview_window("main") { let _ = window.set_title("Onyx"); }
             Ok(())

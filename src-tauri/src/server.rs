@@ -116,7 +116,7 @@ async fn api_analytics(State(state): State<Shared>, headers: HeaderMap) -> Resul
 fn command_available(name: &str) -> bool { crate::child_process::command(name).arg("-version").output().map(|o| o.status.success()).unwrap_or(false) }
 async fn api_status(State(state): State<Shared>) -> Json<BrowserStatus> {
     let access_password_set = state.settings.read().ok().is_some_and(|settings| settings.access_password_hash.is_some());
-    Json(BrowserStatus { running: true, item_count: state.media.read().map(|m| m.len()).unwrap_or(0), ffprobe_available: command_available("ffprobe"), ffmpeg_available: command_available("ffmpeg"), access_password_set, artwork_cache_bytes: artwork::cache_size(&state.artwork_path) })
+    Json(BrowserStatus { running: true, item_count: state.media.read().map(|m| m.len()).unwrap_or(0), ffprobe_available: command_available("ffprobe"), ffmpeg_available: command_available("ffmpeg"), access_password_set, artwork_cache_bytes: artwork::cache_size(&state.artwork_path)+artwork::cache_size(&state.provider_path.join("metadata-images")) })
 }
 
 fn require_owner(state: &crate::AppState, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {

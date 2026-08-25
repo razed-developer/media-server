@@ -5,6 +5,8 @@ import {
   Check,
   ClipboardList,
   Database,
+  Eye,
+  EyeOff,
   Film,
   FolderOpen,
   Image,
@@ -143,6 +145,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [backupPassword, setBackupPassword] = useState("");
+  const [backupPasswordVisible, setBackupPasswordVisible] = useState(false);
   const [backupPath, setBackupPath] = useState("");
   const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(
     null,
@@ -738,13 +741,18 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
               </p>
               <label className="setup-field">
                 <span>Backup password</span>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  value={backupPassword}
-                  onChange={(e) => setBackupPassword(e.target.value)}
-                  placeholder="At least 10 characters"
-                />
+                <div className="password-view-field">
+                  <input
+                    type={backupPasswordVisible ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={backupPassword}
+                    onChange={(e) => setBackupPassword(e.target.value)}
+                    placeholder="At least 10 characters"
+                  />
+                  <button type="button" title={backupPasswordVisible ? "Hide backup password" : "Show backup password"} aria-label={backupPasswordVisible ? "Hide backup password" : "Show backup password"} onClick={() => setBackupPasswordVisible((visible) => !visible)}>
+                    {backupPasswordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </div>
               </label>
               <button
                 className="primary"
@@ -1176,7 +1184,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
             <p className="eyebrow">STORAGE</p>
             <h1>Cache</h1>
             <div className="settings-card">
-              <h3>Artwork</h3>
+              <h3>Artwork and metadata</h3>
               <p>
                 {Math.round((status?.artworkCacheBytes ?? 0) / 1024 / 1024)} MB
                 used

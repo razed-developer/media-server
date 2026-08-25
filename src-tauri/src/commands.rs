@@ -395,11 +395,14 @@ pub fn user_analytics(user_id: String, state: TauriState<'_, Shared>) -> Result<
     Ok(EnrichedAnalyticsSummary::from_core(core, genres))
 }
 #[tauri::command]
-pub fn list_media(user_id: String, include_hidden: Option<bool>, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
-    let started=Instant::now();
-    ensure_user(&state, &user_id)?;
-    let result=enrich(&state, database::load_library_for_user(&state.database_path, &user_id, include_hidden.unwrap_or(false))?);
-    let elapsed=started.elapsed().as_millis();if elapsed>200{crate::activity::warn("Performance",format!("list_media took {elapsed} ms for {} items",result.as_ref().map(|items|items.len()).unwrap_or(0)));}result
+pub async fn list_media(user_id: String, include_hidden: Option<bool>, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
+    let shared=state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let started=Instant::now();
+        ensure_user(&shared,&user_id)?;
+        let result=enrich(&shared,database::load_library_for_user(&shared.database_path,&user_id,include_hidden.unwrap_or(false))?);
+        let elapsed=started.elapsed().as_millis();if elapsed>200{crate::activity::warn("Performance",format!("list_media took {elapsed} ms for {} items",result.as_ref().map(|items|items.len()).unwrap_or(0)));}result
+    }).await.map_err(|error|format!("Library worker failed: {error}"))?
 }
 #[tauri::command]
 pub fn save_progress(user_id: String, id: String, seconds: u64, watched_seconds: Option<u64>, state: TauriState<'_, Shared>) -> Result<(), String> {
@@ -547,7 +550,12 @@ pub fn clear_thumbnail_cache(state: TauriState<'_, Shared>) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, String> {
+pub async fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, String> {
+    let shared=state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move||server_status_inner(&shared)).await.map_err(|error|format!("Status worker failed: {error}"))?
+}
+
+fn server_status_inner(state:&crate::AppState)->Result<ServerStatus,String>{
     let settings = state.settings.read().map_err(|_| "Settings lock poisoned")?;
     let item_count = state.media.read().map_err(|_| "Media lock poisoned")?.len();
     let movie_paths = settings.effective_movie_paths();
@@ -566,7 +574,7 @@ pub fn server_status(state: TauriState<'_, Shared>) -> Result<ServerStatus, Stri
         ffprobe_available: command_available("ffprobe"),
         ffmpeg_available: command_available("ffmpeg"),
         access_password_set: settings.access_password_hash.is_some(),
-        artwork_cache_bytes: artwork::cache_size(&state.artwork_path),
+        artwork_cache_bytes: artwork::cache_size(&state.artwork_path)+artwork::cache_size(&state.provider_path.join("metadata-images")),
         setup_complete: settings.setup_complete,
         ibroadcast_client_id: settings.ibroadcast_client_id.clone(),
         scan_progress: state.scan_progress.read().map_err(|_| "Scan progress lock poisoned")?.clone(),

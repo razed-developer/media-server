@@ -17,6 +17,8 @@
         "height": 900,
         "minWidth": 900,
         "minHeight": 640,
+        "maximized": true,
+        "skipTaskbar": false,
         "resizable": true,
         "maximizable": true,
         "decorations": false
@@ -29,7 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["../logos/app-icon.png"],
+    "icon": ["icons/icon.ico", "icons/icon.png", "icons/128x128.png", "icons/128x128@2x.png"],
     "resources": {
       "web/": "web/"
     }

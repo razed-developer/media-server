@@ -10,7 +10,6 @@ import { LibraryJumpBridge } from './components/LibraryJumpBridge';
 import { OnyxDialogProvider } from './components/OnyxDialogProvider';
 import { OnyxVideoControls } from './components/OnyxVideoControls';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
-import { PlayerPlaybackEnhancer } from './components/PlayerPlaybackEnhancer';
 import { PlayerSubtitleSearch } from './components/PlayerSubtitleSearch';
 import { QuickLibraryRefresh } from './components/QuickLibraryRefresh';
 import { SetupGate } from './components/SetupGate';
@@ -47,7 +46,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <QuickLibraryRefresh />
       <LibraryJumpBridge />
       <FullscreenGuard />
-      <PlayerPlaybackEnhancer />
       <OnyxVideoControls />
       <PlayerSubtitleSearch />
       <GlobalMediaSearch />

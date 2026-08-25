@@ -24,6 +24,7 @@ Onyx is a deliberately simple Tauri home media server focused on movies and tele
 - HTTP range streaming for direct play
 - FFmpeg remux/transcode playback
 - External SRT/VTT subtitles and embedded subtitle extraction
+- Optional local AI subtitle generation with whisper.cpp
 - Local/generated/provider posters, backdrops and episode thumbnails
 - Persistent user playlists
 - Hide/unhide movies, episodes and entire shows
@@ -181,6 +182,17 @@ Then verify:
 ffprobe -version
 ffmpeg -version
 ```
+
+## AI-generated subtitles
+
+Onyx can use a local `whisper.cpp` worker to generate English WebVTT subtitles
+for prerecorded media. It supports automatic generation for newly added media,
+a manual player action, and a bulk action for existing library items. The
+worker and model remain optional, so Onyx continues to work normally when they
+are not installed.
+
+Windows installation, CUDA build, model download, testing, and Onyx setup are
+documented in [`docs/AI-SUBTITLES.md`](docs/AI-SUBTITLES.md).
 
 ## iBroadcast
 

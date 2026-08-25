@@ -10,6 +10,7 @@ Onyx uses Tauri 2. Builds must be created on the operating system they target.
 - Windows: Microsoft Edge WebView2 and the Visual Studio C++ build tools
 - Linux: the Tauri WebKitGTK and packaging dependencies
 - FFmpeg and FFprobe are runtime requirements for media inspection and transcoding
+- whisper.cpp and a GGML model are optional runtime dependencies for AI subtitles
 
 Install JavaScript dependencies before the first build:
 
@@ -77,6 +78,10 @@ README.txt
 The flag tells Onyx to keep its settings, database, cache, artwork, and provider state inside `OnyxData/` instead of Windows application data. Keep the executable, flag, `web/`, and `OnyxData/` together.
 
 The portable build is not a fully static executable. The target computer still needs Microsoft Edge WebView2. Media probing and transcoding also require FFmpeg and FFprobe to be available on `PATH`.
+
+Local AI subtitles are optional and are not bundled in current packages. Follow
+[`AI-SUBTITLES.md`](AI-SUBTITLES.md) to install a CUDA-enabled whisper.cpp
+worker and model on the Windows server computer.
 
 ## Platform limitation
 

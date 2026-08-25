@@ -48,7 +48,7 @@ export function LiveChannelsView({media,onOpenSettings,projector=false,userName}
     for(let index=0;index<video.textTracks.length;index++)video.textTracks[index].mode=subtitlesOn&&index===0?'showing':'disabled';
   },[subtitlesOn,tuned?.current?.mediaId]);
 
-  const keepLive=()=>{const video=videoRef.current;if(video?.paused&&!video.ended)void video.play().catch(()=>{})};
+  const keepLive=()=>{const video=videoRef.current;if(!document.body.classList.contains('sleep-mode')&&video?.paused&&!video.ended)void video.play().catch(()=>{})};
   const toggleFullscreen=async()=>{try{if(document.fullscreenElement){await document.exitFullscreen();return}await videoShellRef.current?.requestFullscreen()}catch(c){setError(`Could not change fullscreen mode: ${String(c)}`)}};
 
   return <div className={`live-page ${projector?'projector-live-page':''}`}><section className="live-header"><div><p className="eyebrow">{projector&&userName?`${userName.toUpperCase()}'S LIVE CHANNELS`:'LIVE CHANNELS'}</p><h1>What’s on now</h1></div><div className="live-header-actions">{loadingGuide&&guide.length>0&&<span className="live-guide-status"><LoaderCircle className="spin" size={14}/>Extending guide…</span>}<button className="live-icon-button" title="Refresh guide" aria-label="Refresh guide" onClick={()=>void refresh(false)}><RefreshCw size={17}/></button>{!projector&&<button className="live-icon-button" title="Manage channels" aria-label="Manage channels" onClick={onOpenSettings}><Settings2 size={17}/></button>}</div></section>

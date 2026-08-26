@@ -252,7 +252,7 @@ fn update_root(state: &crate::app_state::AppState, kind: &str, path: String, add
     if kind == "movie" { settings.movie_path = target.first().cloned(); } else if kind == "tv" { settings.tv_path = target.first().cloned(); }
     drop(settings);
     persist_settings(state)?;
-    scan(state)?;
+    scan(state, None)?;
     Ok(())
 }
 
@@ -263,7 +263,7 @@ fn remove_root(state: &crate::app_state::AppState, kind: &str, path: &str) -> Re
     if kind == "movie" { settings.movie_path = target.first().cloned(); } else if kind == "tv" { settings.tv_path = target.first().cloned(); }
     drop(settings);
     persist_settings(state)?;
-    scan(state)?;
+    scan(state, None)?;
     Ok(())
 }
 

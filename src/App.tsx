@@ -36,6 +36,8 @@ import { PlayerPage } from './pages/PlayerPage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
 import { ContextMenu, type ContextMenuState, type MenuTarget, type TvShow } from './components/menus/ContextMenu';
 import { TelevisionPage } from './pages/TelevisionPage';
+import { allWatched, episodeLabel, groupPercent, socialKey, watched } from './utils/media';
+import { profileSlug, projectorProfileSlug, requestedProfileSlug } from './utils/routes';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -50,18 +52,6 @@ type Section = 'home' | 'movies' | 'tv' | 'specials' | 'collection' | 'live' | '
 type CollectionSession = { token: string; idleSince?: number };
 type TvView = 'season' | 'list';
 
-const episodeLabel = (item: MediaItem) => item.season == null || item.episode == null
-  ? item.title
-  : `S${String(item.season).padStart(2, '0')} E${String(item.episode).padStart(2, '0')}${item.episodeEnd != null ? `-${String(item.episodeEnd).padStart(2, '0')}` : ''} · ${item.title}`;
-const watched = (item: MediaItem) => Boolean(item.durationSeconds && item.progressSeconds / item.durationSeconds >= .9);
-const percent = (item: MediaItem) => item.durationSeconds ? Math.min(100, Math.max(0, item.progressSeconds / item.durationSeconds * 100)) : 0;
-const groupPercent = (items: MediaItem[]) => items.length ? items.reduce((sum, item) => sum + percent(item), 0) / items.length : 0;
-const allWatched = (items: MediaItem[]) => items.length > 0 && items.every(watched);
-const socialKey = (item: MediaItem) => item.metadataEntityId ?? (item.provider && item.providerId ? `${item.provider}:${item.providerId}` : `media:${item.id}`);
-const profileSlug=(name:string)=>name.trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-const routeSlug=()=>window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase()??'';
-const projectorProfileSlug=()=>routeSlug().startsWith('live-')?routeSlug().slice(5):undefined;
-const requestedProfileSlug=()=>(projectorProfileSlug()??routeSlug())||undefined;
 const numberPrompt = (label: string, current?: number) => {
   const value = window.prompt(label, current == null ? '' : String(current));
   if (value == null) return undefined;

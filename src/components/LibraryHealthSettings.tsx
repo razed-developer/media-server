@@ -35,6 +35,8 @@ const repairable = (item: LibraryHealthItem) =>
   item.status !== "missing-file" &&
   !item.issues.every((issue) => issue.includes("probe"));
 
+const PAGE_SIZE = 100;
+
 export function LibraryHealthSettings({
   onChanged,
 }: {
@@ -43,15 +45,20 @@ export function LibraryHealthSettings({
   const [report, setReport] = useState<LibraryHealthReport | null>(null);
   const [filter, setFilter] = useState<Filter>("attention");
   const [busy, setBusy] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LibraryRepairReport | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const load = async () => {
+    setLoading(true);
     setError(null);
     try {
       setReport(await getLibraryHealth());
     } catch (cause) {
       setError(String(cause));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -85,6 +92,12 @@ export function LibraryHealthSettings({
     );
   }, [filter, report]);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filter, report]);
+
+  const visibleItems = items.slice(0, visibleCount);
+
   const runRepair = async (id?: string) => {
     setBusy(id ?? "all");
     setError(null);
@@ -114,8 +127,11 @@ export function LibraryHealthSettings({
             changing watch history, playlists, or manual matches.
           </p>
         </div>
-        <button disabled={busy !== null} onClick={() => void load()}>
-          <RefreshCw className={busy ? "spin" : ""} size={16} /> Refresh
+        <button
+          disabled={busy !== null || loading}
+          onClick={() => void load()}
+        >
+          <RefreshCw className={loading ? "spin" : ""} size={16} /> Refresh
         </button>
       </div>
 
@@ -218,7 +234,7 @@ export function LibraryHealthSettings({
           </div>
 
           <div className="health-list">
-            {items.map((item) => (
+            {visibleItems.map((item) => (
               <article className="settings-card health-item" key={item.id}>
                 <div className="health-item-copy">
                   <div className="health-item-heading">
@@ -265,6 +281,16 @@ export function LibraryHealthSettings({
               <div className="settings-card health-empty">
                 <CheckCircle2 /> No items match this filter.
               </div>
+            )}
+            {visibleCount < items.length && (
+              <button
+                className="health-load-more"
+                onClick={() =>
+                  setVisibleCount((current) => current + PAGE_SIZE)
+                }
+              >
+                Show {Math.min(PAGE_SIZE, items.length - visibleCount)} more
+              </button>
             )}
           </div>
         </>

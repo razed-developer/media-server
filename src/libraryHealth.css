@@ -115,6 +115,10 @@
 .health-empty svg {
   color: #49b979;
 }
+.health-load-more {
+  justify-self: center;
+  margin: 8px 0 18px;
+}
 @media (max-width: 760px) {
   .library-health-title,
   .health-toolbar,

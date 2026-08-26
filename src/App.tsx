@@ -184,7 +184,7 @@ function App() {
   const hiddenMovies = useMemo(() => hiddenItems.filter(i => i.kind === 'movie'), [hiddenItems]);
   const generallyVisibleItems = useMemo(() => items.filter(item => !item.collectionProtected || Boolean(item.collectionSourceId && collectionSessions[item.collectionSourceId])), [items, collectionSessions]);
   const historyItems = useMemo(() => generallyVisibleItems.filter(item => Boolean(item.lastWatchedAt)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)), [generallyVisibleItems]);
-  const continueItems = useMemo(() => generallyVisibleItems.filter(item => item.progressSeconds > 0 && (!item.durationSeconds || item.progressSeconds / item.durationSeconds < .995)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)).slice(0, 14), [generallyVisibleItems]);
+  const continueItems = useMemo(() => generallyVisibleItems.filter(item => !item.collectionProtected && item.progressSeconds > 0 && (!item.durationSeconds || item.progressSeconds / item.durationSeconds < .995)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)).slice(0, 14), [generallyVisibleItems]);
   const recentMovies = useMemo(() => [...movies].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 12), [movies]);
   const recentShows = useMemo(() => [...shows].sort((a, b) => b.addedAt - a.addedAt).slice(0, 12), [shows]);
   const selectedShow = useMemo(() => shows.find(s => s.title === selectedShowTitle) ?? null, [shows, selectedShowTitle]);

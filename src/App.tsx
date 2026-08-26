@@ -29,6 +29,7 @@ import { Rail } from './components/media/Rail';
 import { ProgressLine, WatchedBadge } from './components/media/MediaStatus';
 import { MetadataSummary } from './components/media/MetadataSummary';
 import { MediaCard } from './components/media/MediaCard';
+import { ShowCard } from './components/media/ShowCard';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -113,22 +114,6 @@ function WindowBar() {
   </div>;
 }
 
-function ShowCard({ show, onOpen, onMenu }: { show: TvShow; onOpen: (show: TvShow) => void; onMenu: (event: ReactMouseEvent, show: TvShow) => void }) {
-  const primary = resolveMediaUrl(show.representative.posterUrl), fallback = resolveMediaUrl(show.representative.thumbnailUrl);
-  return <article className="media-card show-card" onClick={() => onOpen(show)} onContextMenu={event => onMenu(event, show)}>
-    <div className="poster">
-      {primary || fallback ? <img className="poster-image" src={primary || fallback} alt="" loading="lazy" onError={event => {
-        if (fallback && event.currentTarget.src !== fallback) event.currentTarget.src = fallback;
-        else event.currentTarget.style.display = 'none';
-      }} /> : <div className="poster-letter">{show.title.charAt(0)}</div>}
-      <WatchedBadge done={allWatched(show.episodes)} />
-      <button aria-label={`Open ${show.title}`}><Play size={21} /></button>
-    </div>
-    <ProgressLine value={groupPercent(show.episodes)} />
-    <h3>{show.title}</h3>
-    <p>{show.seasons} {show.seasons === 1 ? 'season' : 'seasons'} · {show.episodes.length} episodes</p>
-  </article>;
-}
 
 function App() {
   const isDesktop = isTauriDesktop();

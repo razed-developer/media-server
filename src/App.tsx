@@ -2,8 +2,8 @@ import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
-  ArrowLeft, Check, FolderOpen, Layers3, List, ListVideo, Lock,
-  Plus, UserRound, X,
+  ArrowLeft, Check, FolderOpen, Layers3, List, Lock,
+  UserRound, X,
 } from 'lucide-react';
 import {
   addToPlaylist, createPlaylist, deletePlaylist, getActiveUserId, getAnalytics,
@@ -38,6 +38,8 @@ import { SpecialsPage } from './pages/SpecialsPage';
 import { CollectionPage } from './pages/CollectionPage';
 import { HiddenMediaPage } from './pages/HiddenMediaPage';
 import { PlayerPage } from './pages/PlayerPage';
+import { PlaylistsPage } from './pages/PlaylistsPage';
+import { ContextMenu, type ContextMenuState, type MenuTarget, type TvShow } from './components/menus/ContextMenu';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -51,13 +53,6 @@ const emptyAnalytics: AnalyticsSummary = { totalSeconds: 0, movieSeconds: 0, tvS
 type Section = 'home' | 'movies' | 'tv' | 'specials' | 'collection' | 'live' | 'music' | 'history' | 'playlists' | 'analytics' | 'settings' | 'hidden';
 type CollectionSession = { token: string; idleSince?: number };
 type TvView = 'season' | 'list';
-type TvShow = { title: string; episodes: MediaItem[]; representative: MediaItem; seasons: number; addedAt: number };
-type MenuTarget =
-  | { type: 'item'; item: MediaItem }
-  | { type: 'show'; show: TvShow }
-  | { type: 'season'; showTitle: string; season: number; items: MediaItem[] }
-  | { type: 'playlist'; playlist: Playlist };
-type ContextMenuState = { x: number; y: number; target: MenuTarget; hiddenView?: boolean } | null;
 
 const episodeLabel = (item: MediaItem) => item.season == null || item.episode == null
   ? item.title
@@ -295,8 +290,7 @@ function App() {
       {section === 'live' && <LiveChannelsView media={items} onOpenSettings={() => navigate('settings')} />}
       {section === 'music' && <MusicView />}
       {section === 'history' && <MediaGalleryPage eyebrow="HISTORY" title="Recently watched" subtitle={`${historyItems.length} items`} items={visibleHistory} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
-      {section === 'playlists' && !selectedPlaylist && <><PageHero eyebrow="PLAYLISTS" title="Playlists" subtitle={`${playlists.length} playlists`} /><button className="primary" onClick={() => void makePlaylist()}><Plus size={18} />New playlist</button><section className="playlist-grid">{playlists.map(playlist => { const first = playlist.mediaIds.map(id => items.find(item => item.id === id)).find(Boolean); return <article className="playlist-card" key={playlist.id} onClick={() => setSelectedPlaylistId(playlist.id)} onContextMenu={event => openMenu(event, { type: 'playlist', playlist })}>{first?.posterUrl || first?.thumbnailUrl ? <img src={resolveMediaUrl(first.posterUrl || first.thumbnailUrl)} alt="" /> : <div className="playlist-placeholder"><ListVideo size={40} /></div>}<div><h3>{playlist.name}</h3><p>{playlist.mediaIds.length} items</p></div></article>; })}</section></>}
-      {section === 'playlists' && selectedPlaylist && <><PageHero eyebrow="PLAYLIST" title={selectedPlaylist.name} subtitle={`${playlistItems.length} items`} /><button className="back-button playlist-back" onClick={() => setSelectedPlaylistId(null)}><ArrowLeft size={18} />All playlists</button><section className="gallery">{playlistItems.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section></>}
+      {section === 'playlists' && <PlaylistsPage playlists={playlists} selected={selectedPlaylist} selectedItems={playlistItems} library={items} onCreate={() => void makePlaylist()} onOpen={playlist => setSelectedPlaylistId(playlist.id)} onBack={() => setSelectedPlaylistId(null)} onPlay={startPlayback} onItemMenu={(event, item) => openMenu(event, { type: 'item', item })} onPlaylistMenu={(event, playlist) => openMenu(event, { type: 'playlist', playlist })} />}
       {section === 'analytics' && <AnalyticsPage analytics={analytics} />}
       {section === 'settings' && <SettingsPage onChanged={() => void refresh()} />}
       {section === 'hidden' && <HiddenMediaPage movies={hiddenMovies} shows={hiddenShows} onPlay={startPlayback} onMovieMenu={(event, item) => openMenu(event, { type: 'item', item }, true)} onShowMenu={(event, show) => openMenu(event, { type: 'show', show }, true)} />}
@@ -306,31 +300,6 @@ function App() {
     {Object.entries(collectionSessions).filter(([, session]) => session.idleSince).map(([id, session]) => <CollectionRelockIndicator key={id} name={collections.find(source => source.id === id)?.name ?? 'Collection'} idleSince={session.idleSince!} />)}
   </div>;
   return <>{isDesktop && <WindowBar />}{shell}</>;
-}
-
-function ContextMenu({ menu, isDesktop, playlists, selectedPlaylist, onClose, onPlay, onOpenShow, onReset, onAdd, onCreate, onFixMatch, onEditLocal, onResetLocal, onFixShowMatch, onEditLocalShow, onHideItem, onHideShow, onRemovePlaylistItem, onOpenPlaylist, onDeletePlaylist }: {
-  menu: NonNullable<ContextMenuState>; isDesktop: boolean; playlists: Playlist[]; selectedPlaylist: Playlist | null; onClose: () => void; onPlay: (item: MediaItem) => void; onOpenShow: (show: TvShow) => void; onReset: (ids: string[]) => void; onAdd: (playlistId: string, ids: string[]) => void; onCreate: (ids: string[]) => void; onFixMatch: (item: MediaItem) => void; onEditLocal: (item: MediaItem) => void; onResetLocal: (item: MediaItem) => void; onFixShowMatch: (show: TvShow) => void; onEditLocalShow: (show: TvShow) => void; onHideItem: (item: MediaItem, hidden: boolean) => void; onHideShow: (show: TvShow, hidden: boolean) => void; onRemovePlaylistItem: (playlistId: string, mediaId: string) => void; onOpenPlaylist: (playlist: Playlist) => void; onDeletePlaylist: (playlist: Playlist) => void;
-}) {
-  const target = menu.target;
-  const ids = target.type === 'item' ? [target.item.id] : target.type === 'show' ? target.show.episodes.map(i => i.id) : target.type === 'season' ? target.items.map(i => i.id) : [];
-  const label = target.type === 'item' ? target.item.title : target.type === 'show' ? target.show.title : target.type === 'season' ? `Season ${target.season}` : target.playlist.name;
-  const action = (fn: () => void) => () => { fn(); onClose(); };
-  return <div className="context-menu" style={{ left: menu.x, top: menu.y }} onClick={event => event.stopPropagation()}>
-    <div className="context-title">{label}</div>
-    {target.type === 'item' && <button onClick={action(() => onPlay(target.item))}>Play</button>}
-    {target.type === 'show' && !menu.hiddenView && <button onClick={action(() => onOpenShow(target.show))}>Open show</button>}
-    {target.type === 'playlist' && <button onClick={action(() => onOpenPlaylist(target.playlist))}>Open playlist</button>}
-    {target.type !== 'playlist' && !menu.hiddenView && <button onClick={action(() => onReset(ids))}>Reset watch status</button>}
-    {target.type === 'item' && !menu.hiddenView && <button onClick={action(() => onHideItem(target.item, true))}>Hide for this user</button>}
-    {target.type === 'show' && !menu.hiddenView && <button onClick={action(() => onHideShow(target.show, true))}>Hide show for this user</button>}
-    {target.type === 'item' && menu.hiddenView && <button onClick={action(() => onHideItem(target.item, false))}>Unhide</button>}
-    {target.type === 'show' && menu.hiddenView && <button onClick={action(() => onHideShow(target.show, false))}>Unhide show</button>}
-    {target.type !== 'playlist' && !menu.hiddenView && <><div className="context-separator" /><div className="context-label">Add to playlist</div>{playlists.map(playlist => <button key={playlist.id} onClick={action(() => onAdd(playlist.id, ids))}>{playlist.name}</button>)}<button onClick={action(() => onCreate(ids))}>+ New playlist…</button></>}
-    {target.type === 'item' && selectedPlaylist?.mediaIds.includes(target.item.id) && <button onClick={action(() => onRemovePlaylistItem(selectedPlaylist.id, target.item.id))}>Remove from this playlist</button>}
-    {isDesktop && target.type === 'item' && <><div className="context-separator" /><button onClick={action(() => onFixMatch(target.item))}>Fix Match…</button><button onClick={action(() => onEditLocal(target.item))}>Edit local identification…</button><button onClick={action(() => onResetLocal(target.item))}>Reset local identification</button></>}
-    {isDesktop && target.type === 'show' && <><div className="context-separator" /><button onClick={action(() => onFixShowMatch(target.show))}>Fix Match…</button><button onClick={action(() => onEditLocalShow(target.show))}>Edit local show name…</button></>}
-    {target.type === 'playlist' && <><div className="context-separator" /><button className="danger" onClick={action(() => onDeletePlaylist(target.playlist))}>Delete playlist</button></>}
-  </div>;
 }
 
 export default App;

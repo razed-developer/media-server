@@ -1,30 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   ArchiveRestore,
-  Captions,
   Check,
-  ClipboardList,
-  Database,
   Eye,
   EyeOff,
   Film,
   FolderOpen,
-  Image,
-  HeartPulse,
-  KeyRound,
-  Music2,
-  Palette,
   Plus,
-  Radio,
   RefreshCw,
   Save,
-  Server,
-  Tags,
-  TerminalSquare,
-  Trash2,
   Tv,
   UserRound,
-  Users,
   X,
 } from "lucide-react";
 import {
@@ -85,24 +71,12 @@ import { SleepVideoSettings } from "./SleepVideoSettings";
 import { UserAvatarPicker, AvatarBadge } from "./UserAvatarPicker";
 import { WishlistView } from "./WishlistView";
 import { CollectionSourcesSettings } from "./CollectionSourcesSettings";
+import { SettingsNavigation, type SettingsCategory } from "../features/settings/SettingsNavigation";
+import { LibraryRootCard } from "../features/settings/LibraryRootCard";
+import { ContinueWatchingSettings } from "../features/settings/ContinueWatchingSettings";
 import "../activityConsole.css";
 import "../funnelSettings.css";
 
-type Category =
-  | "general"
-  | "library"
-  | "health"
-  | "backup"
-  | "metadata"
-  | "users"
-  | "requests"
-  | "appearance"
-  | "remote"
-  | "music"
-  | "subtitles"
-  | "live"
-  | "cache"
-  | "activity";
 const themes: ThemeName[] = [
   "onyx",
   "midnight",
@@ -121,7 +95,7 @@ const themeLabels: Record<ThemeName, string> = {
 };
 
 export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
-  const [category, setCategory] = useState<Category>("general");
+  const [category, setCategory] = useState<SettingsCategory>("general");
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
   const [funnelBusy, setFunnelBusy] = useState(false);
@@ -481,150 +455,9 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const specialPaths = status?.specialPaths ?? [];
   const activeProfile = users.find((user) => user.id === active) ?? users[0];
   const canManageFunnel = isTauriDesktop() || Boolean(activeProfile?.isAdmin);
-  const roots = (kind: "movie" | "tv" | "special", paths: string[], Icon: typeof Film) => (
-    <div className="settings-card library-root-card">
-      <div className="library-root-heading">
-        <Icon />
-        <div>
-          <h3>{kind === "movie" ? "Movies" : kind === "tv" ? "TV Shows" : "Specials & Documentaries"}</h3>
-          <p>
-            {paths.length
-              ? `${paths.length} ${paths.length === 1 ? "folder" : "folders"}`
-              : "No folders selected"}
-          </p>
-        </div>
-        <button disabled={libraryBusy} onClick={() => void addFolder(kind)}>
-          <Plus size={16} />
-          {libraryBusy ? "Scanning…" : "Add folder"}
-        </button>
-      </div>
-      <div className="library-root-list">
-        {paths.map((path) => (
-          <div className="library-root-row" key={path}>
-            <FolderOpen size={15} />
-            <span title={path}>{path}</span>
-            <button
-              disabled={libraryBusy}
-              className="icon-action danger-text"
-              aria-label={`Remove ${path}`}
-              onClick={() => void removeFolder(kind, path)}
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
-        ))}
-        {!paths.length && (
-          <p className="muted">
-            Add one or more folders. Onyx scans all of them into the same{" "}
-            {kind === "movie" ? "movie" : kind === "tv" ? "TV" : "specials"} library.
-          </p>
-        )}
-      </div>
-    </div>
-  );
   return (
     <div className="settings-page">
-      <aside className="settings-nav">
-        <h2>Settings</h2>
-        <button
-          className={category === "general" ? "active" : ""}
-          onClick={() => setCategory("general")}
-        >
-          <Server size={18} />
-          General
-        </button>
-        <button
-          className={category === "library" ? "active" : ""}
-          onClick={() => setCategory("library")}
-        >
-          <Database size={18} />
-          Libraries
-        </button>
-        <button
-          className={category === "backup" ? "active" : ""}
-          onClick={() => setCategory("backup")}
-        >
-          <ArchiveRestore size={18} />
-          Backup & Restore
-        </button>
-        <button
-          className={category === "health" ? "active" : ""}
-          onClick={() => setCategory("health")}
-        >
-          <HeartPulse size={18} />
-          Library Health
-        </button>
-        <button
-          className={category === "metadata" ? "active" : ""}
-          onClick={() => setCategory("metadata")}
-        >
-          <Tags size={18} />
-          Metadata
-        </button>
-        <button
-          className={category === "users" ? "active" : ""}
-          onClick={() => setCategory("users")}
-        >
-          <Users size={18} />
-          Users
-        </button>
-        <button
-          className={category === "requests" ? "active" : ""}
-          onClick={() => setCategory("requests")}
-        >
-          <ClipboardList size={18} />
-          Requests
-        </button>
-        <button
-          className={category === "appearance" ? "active" : ""}
-          onClick={() => setCategory("appearance")}
-        >
-          <Palette size={18} />
-          Appearance
-        </button>
-        {canManageFunnel && <button
-          className={category === "remote" ? "active" : ""}
-          onClick={() => setCategory("remote")}
-        >
-          <KeyRound size={18} />
-          Remote access
-        </button>}
-        <button
-          className={category === "music" ? "active" : ""}
-          onClick={() => setCategory("music")}
-        >
-          <Music2 size={18} />
-          Music
-        </button>
-        <button
-          className={category === "subtitles" ? "active" : ""}
-          onClick={() => setCategory("subtitles")}
-        >
-          <Captions size={18} />
-          Subtitles
-        </button>
-        <button
-          className={category === "live" ? "active" : ""}
-          onClick={() => setCategory("live")}
-        >
-          <Radio size={18} />
-          Live TV
-        </button>
-        <button
-          className={category === "cache" ? "active" : ""}
-          onClick={() => setCategory("cache")}
-        >
-          <Image size={18} />
-          Cache
-        </button>
-        <button
-          className={category === "activity" ? "active" : ""}
-          onClick={() => setCategory("activity")}
-        >
-          <TerminalSquare size={18} />
-          Activity
-        </button>
-      </aside>
+      <SettingsNavigation active={category} canManageRemote={canManageFunnel} onSelect={setCategory} />
       <section className="settings-content">
         {error && <div className="error-banner">{error}</div>}
         {category === "general" && (
@@ -684,40 +517,42 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
                 </div>
               </div>
             )}
-            <div className="settings-card">
-              <h3>Continue Watching</h3>
-              <p>
-                Keep movies and TV together with matching poster-shaped cards,
-                or split them so episodes can use their wider thumbnails.
-              </p>
-              <label className="setup-field">
-                <span>Home screen layout</span>
-                <select
-                  value={splitContinueWatching ? "split" : "combined"}
-                  onChange={async (event) => {
-                    const split = event.target.value === "split";
-                    setSplitContinueWatchingState(split);
-                    try {
-                      await setSplitContinueWatching(split);
-                      onChanged?.();
-                    } catch (cause) {
-                      setSplitContinueWatchingState(!split);
-                      setError(String(cause));
-                    }
-                  }}
-                >
-                  <option value="combined">
-                    One row — movies and shows use posters
-                  </option>
-                  <option value="split">
-                    Separate movie and TV rows — episodes use thumbnails
-                  </option>
-                </select>
-              </label>
-            </div>
-            {roots("movie", moviePaths, Film)}
-            {roots("tv", tvPaths, Tv)}
-            {roots("special", specialPaths, FolderOpen)}
+            <ContinueWatchingSettings
+              split={splitContinueWatching}
+              onChange={(split) => {
+                setSplitContinueWatchingState(split);
+                void setSplitContinueWatching(split)
+                  .then(() => onChanged?.())
+                  .catch((cause) => {
+                    setSplitContinueWatchingState(!split);
+                    setError(String(cause));
+                  });
+              }}
+            />
+            <LibraryRootCard
+              kind="movie"
+              paths={moviePaths}
+              icon={Film}
+              busy={libraryBusy}
+              onAdd={(kind) => void addFolder(kind)}
+              onRemove={(kind, path) => void removeFolder(kind, path)}
+            />
+            <LibraryRootCard
+              kind="tv"
+              paths={tvPaths}
+              icon={Tv}
+              busy={libraryBusy}
+              onAdd={(kind) => void addFolder(kind)}
+              onRemove={(kind, path) => void removeFolder(kind, path)}
+            />
+            <LibraryRootCard
+              kind="special"
+              paths={specialPaths}
+              icon={FolderOpen}
+              busy={libraryBusy}
+              onAdd={(kind) => void addFolder(kind)}
+              onRemove={(kind, path) => void removeFolder(kind, path)}
+            />
             <p className="muted">Specials folders are scanned recursively. Onyx uses filenames as titles and does not request TMDB metadata or artwork.</p>
             <CollectionSourcesSettings onChanged={onChanged}/>
             <button disabled={libraryBusy} onClick={() => void rescan()}>

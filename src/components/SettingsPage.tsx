@@ -9,22 +9,18 @@ import {
 } from "lucide-react";
 import {
   chooseLibraryPath,
-  clearAccessPassword,
   clearThumbnailCache,
   createUser,
   deleteUser,
   getActiveUserId,
   getLibraryScanProgress,
   getServerStatus,
-  getFunnelStatus,
   isTauriDesktop,
   getUserPreferences,
   listUsers,
   metadataProviderStatus,
   renameUser,
   rescanLibrary,
-  setAccessPassword,
-  setFunnelEnabled,
   setActiveUserId,
   setIbroadcastClientId,
   setSplitContinueWatching,
@@ -40,17 +36,13 @@ import type {
   ActivityEntry,
   MetadataProviderStatus,
   ServerStatus,
-  FunnelStatus,
   ScanProgress,
   ThemeName,
   UserProfile,
 } from "../types";
-import { IbroadcastConnect } from "./IbroadcastConnect";
-import { IbroadcastLogoKit } from "./IbroadcastLogoKit";
 import { LiveChannelsSettings } from "./LiveChannelsSettings";
 import { LibraryHealthSettings } from "./LibraryHealthSettings";
 import { SubtitleSettings } from "./SubtitleSettings";
-import { SleepVideoSettings } from "./SleepVideoSettings";
 import { WishlistView } from "./WishlistView";
 import { CollectionSourcesSettings } from "./CollectionSourcesSettings";
 import { SettingsNavigation, type SettingsCategory } from "../features/settings/SettingsNavigation";
@@ -61,31 +53,16 @@ import { CacheSettings } from "../features/settings/CacheSettings";
 import { BackupRestoreSettings } from "../features/settings/BackupRestoreSettings";
 import { MetadataSettings } from "../features/settings/MetadataSettings";
 import { UsersSettings } from "../features/settings/UsersSettings";
+import { AppearanceSettings } from "../features/settings/AppearanceSettings";
+import { GeneralSettings } from "../features/settings/GeneralSettings";
+import { MusicSettings } from "../features/settings/MusicSettings";
+import { RemoteAccessSettings } from "../features/settings/RemoteAccessSettings";
 import "../activityConsole.css";
 import "../funnelSettings.css";
-
-const themes: ThemeName[] = [
-  "onyx",
-  "midnight",
-  "ember",
-  "light",
-  "pink",
-  "royal",
-];
-const themeLabels: Record<ThemeName, string> = {
-  onyx: "Onyx",
-  midnight: "Midnight",
-  ember: "Ember",
-  light: "Light",
-  pink: "Light Pink",
-  royal: "Royal Purple",
-};
 
 export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [category, setCategory] = useState<SettingsCategory>("general");
   const [status, setStatus] = useState<ServerStatus | null>(null);
-  const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
-  const [funnelBusy, setFunnelBusy] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [avatars, setAvatars] = useState<Record<string, UserAvatar>>({});
   const [active, setActive] = useState(getActiveUserId());
@@ -147,10 +124,6 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     void refreshActivity();
     const timer = window.setInterval(() => void refreshActivity(), 1500);
     return () => window.clearInterval(timer);
-  }, [category]);
-  useEffect(() => {
-    if (category !== "remote") return;
-    void getFunnelStatus().then(setFunnel).catch((c) => setError(String(c)));
   }, [category]);
   useEffect(() => {
     if (!libraryBusy) return;
@@ -280,34 +253,6 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
       setError(String(c));
     }
   };
-  const password = async () => {
-    try {
-      if (status?.accessPasswordSet) {
-        if (window.confirm("Remove the browser access password?"))
-          await clearAccessPassword();
-      } else {
-        const value = window.prompt(
-          "New browser access password (minimum 8 characters):",
-        );
-        if (value) await setAccessPassword(value);
-      }
-      await refresh();
-      setFunnel(await getFunnelStatus());
-    } catch (c) {
-      setError(String(c));
-    }
-  };
-  const toggleFunnel = async () => {
-    setFunnelBusy(true);
-    setError(null);
-    try {
-      setFunnel(await setFunnelEnabled(!funnel?.enabled));
-    } catch (c) {
-      setError(String(c));
-    } finally {
-      setFunnelBusy(false);
-    }
-  };
   const moviePaths =
     status?.moviePaths ?? (status?.moviePath ? [status.moviePath] : []);
   const tvPaths = status?.tvPaths ?? (status?.tvPath ? [status.tvPath] : []);
@@ -319,32 +264,7 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
       <SettingsNavigation active={category} canManageRemote={canManageFunnel} onSelect={setCategory} />
       <section className="settings-content">
         {error && <div className="error-banner">{error}</div>}
-        {category === "general" && (
-          <>
-            <p className="eyebrow">ONYX</p>
-            <h1>General</h1>
-            <div className="settings-card">
-              <h3>Server</h3>
-              <p>{status?.localUrl ?? "Starting…"}</p>
-              <dl>
-                <div>
-                  <dt>Media items</dt>
-                  <dd>{status?.itemCount ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>FFmpeg</dt>
-                  <dd>{status?.ffmpegAvailable ? "Available" : "Not found"}</dd>
-                </div>
-                <div>
-                  <dt>FFprobe</dt>
-                  <dd>
-                    {status?.ffprobeAvailable ? "Available" : "Not found"}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </>
-        )}
+        {category === "general" && <GeneralSettings status={status} />}
         {category === "library" && (
           <>
             <p className="eyebrow">MEDIA</p>
@@ -467,104 +387,30 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
           <WishlistView user={activeProfile} />
         )}
         {category === "appearance" && (
-          <>
-            <p className="eyebrow">PROFILE</p>
-            <h1>Appearance</h1>
-            <div className="theme-choice-grid">
-              {themes.map((value) => (
-                <button
-                  key={value}
-                  className={`theme-choice theme-${value} ${theme === value ? "active" : ""}`}
-                  onClick={() => void chooseTheme(value)}
-                >
-                  <span />
-                  <strong>{themeLabels[value]}</strong>
-                </button>
-              ))}
-            </div>
-            <SleepVideoSettings />
-          </>
+          <AppearanceSettings
+            theme={theme}
+            onThemeChange={(value) => void chooseTheme(value)}
+          />
         )}
         {category === "remote" && (
-          <>
-            <p className="eyebrow">NETWORK</p>
-            <h1>Remote access</h1>
-            <div className="settings-card">
-              <h3>Direct URL</h3>
-              <p>
-                Tailscale or LAN address: <code>{status?.localUrl}</code>
-              </p>
-              <p className="muted">
-                Direct connections remain password-free and private to the
-                networks that can reach this address.
-              </p>
-            </div>
-            <div className="settings-card funnel-settings-card">
-              <div className="funnel-settings-heading">
-                <div>
-                  <h3>Tailscale Funnel</h3>
-                  <p className="muted">
-                    Temporary public access for devices that cannot run
-                    Tailscale. The Funnel address always requires a password.
-                  </p>
-                </div>
-                <button
-                  className={funnel?.enabled ? "funnel-toggle active" : "funnel-toggle"}
-                  onClick={() => void toggleFunnel()}
-                  disabled={funnelBusy || !funnel?.available || (!funnel?.enabled && !status?.accessPasswordSet)}
-                  aria-pressed={Boolean(funnel?.enabled)}
-                >
-                  {funnelBusy ? "Working…" : funnel?.enabled ? "Turn off" : "Turn on"}
-                </button>
-              </div>
-              <dl>
-                <div><dt>Status</dt><dd>{funnel?.enabled ? "Public access on" : "Off"}</dd></div>
-                <div><dt>Password</dt><dd>{status?.accessPasswordSet ? "Set" : "Required"}</dd></div>
-              </dl>
-              {funnel?.url && <p className="funnel-url">Public URL: <code>{funnel.url}</code></p>}
-              {funnel?.detail && <p className="danger-text">{funnel.detail}</p>}
-              <button onClick={() => void password()} disabled={Boolean(funnel?.enabled)}>
-                {status?.accessPasswordSet
-                  ? "Change or remove Funnel password"
-                  : "Set Funnel password"}
-              </button>
-              {funnel?.enabled && (
-                <p className="muted">Turn Funnel off before changing or removing its password.</p>
-              )}
-              <p className="muted">
-                Turning Funnel off makes the public URL unavailable. It does
-                not affect the direct URL above.
-              </p>
-            </div>
-          </>
+          <RemoteAccessSettings
+            localUrl={status?.localUrl}
+            accessPasswordSet={Boolean(status?.accessPasswordSet)}
+            onRefresh={refresh}
+            onError={setError}
+          />
         )}
         {category === "music" && (
-          <>
-            <p className="eyebrow">PROVIDER</p>
-            <h1>iBroadcast</h1>
-            <IbroadcastLogoKit />
-            <label className="setup-field">
-              <span>Onyx iBroadcast client ID</span>
-              <input
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                placeholder="Client ID"
-              />
-              <button
-                onClick={async () => {
-                  try {
-                    await setIbroadcastClientId(clientId);
-                    await refresh();
-                  } catch (c) {
-                    setError(String(c));
-                  }
-                }}
-              >
-                Save
-              </button>
-            </label>
-            <IbroadcastConnect onConnected={() => void refresh()} />
-          </>
+          <MusicSettings
+            clientId={clientId}
+            onClientIdChange={setClientId}
+            onSave={() => {
+              void setIbroadcastClientId(clientId)
+                .then(refresh)
+                .catch((cause) => setError(String(cause)));
+            }}
+            onConnected={() => void refresh()}
+          />
         )}
         {category === "subtitles" && <SubtitleSettings />}
         {category === "live" && <LiveChannelsSettings />}

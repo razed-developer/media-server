@@ -31,6 +31,8 @@ import { ShowCard } from './components/media/ShowCard';
 import { WindowBar } from './components/navigation/WindowBar';
 import { Sidebar } from './components/navigation/Sidebar';
 import { HomePage } from './pages/HomePage';
+import { PageHero } from './components/layout/PageHero';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -59,10 +61,6 @@ const watched = (item: MediaItem) => Boolean(item.durationSeconds && item.progre
 const percent = (item: MediaItem) => item.durationSeconds ? Math.min(100, Math.max(0, item.progressSeconds / item.durationSeconds * 100)) : 0;
 const groupPercent = (items: MediaItem[]) => items.length ? items.reduce((sum, item) => sum + percent(item), 0) / items.length : 0;
 const allWatched = (items: MediaItem[]) => items.length > 0 && items.every(watched);
-const formatTime = (seconds: number) => {
-  const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60);
-  return h ? `${h}h ${m}m` : `${m}m`;
-};
 const socialKey = (item: MediaItem) => item.metadataEntityId ?? (item.provider && item.providerId ? `${item.provider}:${item.providerId}` : `media:${item.id}`);
 const profileSlug=(name:string)=>name.trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const routeSlug=()=>window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase()??'';
@@ -313,17 +311,6 @@ function App() {
     {Object.entries(collectionSessions).filter(([, session]) => session.idleSince).map(([id, session]) => <CollectionRelockIndicator key={id} name={collections.find(source => source.id === id)?.name ?? 'Collection'} idleSince={session.idleSince!} />)}
   </div>;
   return <>{isDesktop && <WindowBar />}{shell}</>;
-}
-
-function PageHero({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
-  return <section className="page-heading"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{subtitle}</p></section>;
-}
-function AnalyticsBars({ title, entries }: { title: string; entries: { label: string; seconds: number }[] }) {
-  const max = Math.max(1, ...entries.map(entry => entry.seconds));
-  return <section className="analytics-panel"><h2>{title}</h2>{entries.length ? entries.map(entry => <div className="analytics-row" key={entry.label}><span>{entry.label}</span><div><i style={{ width: `${entry.seconds / max * 100}%` }} /></div><strong>{formatTime(entry.seconds)}</strong></div>) : <p>No data recorded yet.</p>}</section>;
-}
-function AnalyticsPage({ analytics }: { analytics: AnalyticsSummary }) {
-  return <div className="analytics-page"><PageHero eyebrow="ANALYTICS" title="Your viewing" subtitle={`${formatTime(analytics.totalSeconds)} watched in this profile`} /><section className="stat-grid"><div><span>Total</span><strong>{formatTime(analytics.totalSeconds)}</strong></div><div><span>Movies</span><strong>{formatTime(analytics.movieSeconds)}</strong></div><div><span>TV</span><strong>{formatTime(analytics.tvSeconds)}</strong></div></section><AnalyticsBars title="TV shows" entries={analytics.shows} /><AnalyticsBars title="Genres" entries={analytics.genres ?? []} />{!analytics.genres?.length && <section className="analytics-note"><h3>Genre metadata</h3><p>Genre analytics populate as movies and shows are matched to a metadata provider.</p></section>}</div>;
 }
 
 function ContextMenu({ menu, isDesktop, playlists, selectedPlaylist, onClose, onPlay, onOpenShow, onReset, onAdd, onCreate, onFixMatch, onEditLocal, onResetLocal, onFixShowMatch, onEditLocalShow, onHideItem, onHideShow, onRemovePlaylistItem, onOpenPlaylist, onDeletePlaylist }: {

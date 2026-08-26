@@ -25,6 +25,7 @@ import { SocialBar } from './components/SocialBar';
 import { SleepTimer } from './components/SleepTimer';
 import { AvatarBadge } from './components/UserAvatarPicker';
 import { useOnyxDialog } from './components/OnyxDialogProvider';
+import { Rail } from './components/media/Rail';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -144,9 +145,6 @@ function ShowCard({ show, onOpen, onMenu }: { show: TvShow; onOpen: (show: TvSho
     <h3>{show.title}</h3>
     <p>{show.seasons} {show.seasons === 1 ? 'season' : 'seasons'} · {show.episodes.length} episodes</p>
   </article>;
-}
-function Rail({ title, actionLabel, onAction, children }: { title: string; actionLabel?: string; onAction?: () => void; children: React.ReactNode }) {
-  return <section className="home-rail"><div className="rail-heading"><h2>{title}</h2>{onAction && <button onClick={onAction}>{actionLabel ?? 'View all'} →</button>}</div><div className="rail-scroll">{children}</div></section>;
 }
 function MetadataSummary({ item }: { item: MediaItem }) {
   if (!item.overview && !item.genres?.length && item.rating == null && !item.releaseDate) return null;

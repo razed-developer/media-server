@@ -4,7 +4,7 @@ import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
   ArrowLeft, BarChart3, Check, ChevronDown, EyeOff, Expand, Film, FolderOpen, History,
   Home, KeyRound, Layers3, List, ListVideo, Lock, LogOut, Maximize2, Minus, Music2, Play,
-  Plus, Radio, Search, Settings, Star, Subtitles, Tv, UserRound, X,
+  Plus, Radio, Search, Settings, Subtitles, Tv, UserRound, X,
 } from 'lucide-react';
 import {
   addToPlaylist, createPlaylist, deletePlaylist, getActiveUserId, getAnalytics,
@@ -27,6 +27,7 @@ import { AvatarBadge } from './components/UserAvatarPicker';
 import { useOnyxDialog } from './components/OnyxDialogProvider';
 import { Rail } from './components/media/Rail';
 import { ProgressLine, WatchedBadge } from './components/media/MediaStatus';
+import { MetadataSummary } from './components/media/MetadataSummary';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -140,18 +141,6 @@ function ShowCard({ show, onOpen, onMenu }: { show: TvShow; onOpen: (show: TvSho
     <h3>{show.title}</h3>
     <p>{show.seasons} {show.seasons === 1 ? 'season' : 'seasons'} · {show.episodes.length} episodes</p>
   </article>;
-}
-function MetadataSummary({ item }: { item: MediaItem }) {
-  if (!item.overview && !item.genres?.length && item.rating == null && !item.releaseDate) return null;
-  return <div className="metadata-detail">
-    <div className="metadata-chips">
-      {item.releaseDate && <span>{item.releaseDate}</span>}
-      {item.rating != null && <span className="metadata-rating"><Star size={12} fill="currentColor" /> {item.rating.toFixed(1)}</span>}
-      {item.genres?.map(genre => <span key={genre}>{genre}</span>)}
-      {item.provider && item.providerId && <span>{item.provider.toUpperCase()} #{item.providerId}</span>}
-    </div>
-    {item.overview && <p>{item.overview}</p>}
-  </div>;
 }
 
 function App() {

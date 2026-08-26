@@ -22,7 +22,7 @@ import { SetupLibraryStep } from "../features/setup/SetupLibraryStep";
 import { SetupMusicStep } from "../features/setup/SetupMusicStep";
 import { SetupNavigation } from "../features/setup/SetupNavigation";
 import { SetupUsersStep } from "../features/setup/SetupUsersStep";
-import { SetupRestore } from "./SetupRestore";
+import { SetupRestore } from "../features/setup/SetupRestore";
 
 type SetupLibraryKind = "movie" | "tv";
 

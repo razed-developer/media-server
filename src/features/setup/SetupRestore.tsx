@@ -5,8 +5,8 @@ import {
   completeSetup,
   previewBackup,
   restoreBackup,
-} from "../api";
-import type { BackupPreview, RootMapping } from "../types";
+} from "../../api";
+import type { BackupPreview, RootMapping } from "../../types";
 
 export function SetupRestore({
   onCancel,
@@ -24,13 +24,13 @@ export function SetupRestore({
 
   const choose = async () => {
     const selected = await chooseBackupFile();
-    if (selected) {
-      setPath(selected);
-      setPreview(null);
-      setMappings([]);
-      setError(null);
-    }
+    if (!selected) return;
+    setPath(selected);
+    setPreview(null);
+    setMappings([]);
+    setError(null);
   };
+
   const inspect = async () => {
     setBusy(true);
     setError(null);
@@ -49,6 +49,7 @@ export function SetupRestore({
       setBusy(false);
     }
   };
+
   const restore = async () => {
     setBusy(true);
     setError(null);

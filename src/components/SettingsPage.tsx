@@ -28,7 +28,7 @@ import type {
   UserProfile,
 } from "../types";
 import { LiveChannelsSettings } from "./LiveChannelsSettings";
-import { LibraryHealthSettings } from "./LibraryHealthSettings";
+import { LibraryHealthSettings } from "../features/library-health/LibraryHealthSettings";
 import { SubtitleSettings } from "./SubtitleSettings";
 import { WishlistView } from "./WishlistView";
 import { SettingsNavigation, type SettingsCategory } from "../features/settings/SettingsNavigation";

@@ -28,6 +28,7 @@ import { useOnyxDialog } from './components/OnyxDialogProvider';
 import { Rail } from './components/media/Rail';
 import { ProgressLine, WatchedBadge } from './components/media/MediaStatus';
 import { MetadataSummary } from './components/media/MetadataSummary';
+import { MediaCard } from './components/media/MediaCard';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -112,20 +113,6 @@ function WindowBar() {
   </div>;
 }
 
-function MediaCard({ item, onPlay, onMenu, artwork = 'default' }: { item: MediaItem; onPlay: (item: MediaItem) => void; onMenu: (event: ReactMouseEvent, item: MediaItem) => void; artwork?: 'default' | 'poster' | 'thumbnail' }) {
-  const landscape = artwork === 'thumbnail' || (artwork === 'default' && item.kind === 'episode');
-  const image = artwork === 'poster' ? (item.posterUrl ?? item.thumbnailUrl) : artwork === 'thumbnail' ? (item.thumbnailUrl ?? item.posterUrl) : item.kind === 'episode' ? item.thumbnailUrl : item.posterUrl;
-  return <article className={`media-card ${landscape ? 'episode-card' : ''}`} onClick={() => onPlay(item)} onContextMenu={event => onMenu(event, item)}>
-    <div className="poster">
-      {image ? <img className="poster-image" src={resolveMediaUrl(image)} alt="" loading="lazy" /> : <div className="poster-letter">{item.title.charAt(0)}</div>}
-      <WatchedBadge done={watched(item)} />
-      <button aria-label={`Play ${item.title}`}><Play fill="currentColor" size={21} /></button>
-    </div>
-    <ProgressLine value={percent(item)} />
-    <h3>{item.title}</h3>
-    <p>{item.kind === 'episode' ? episodeLabel(item) : item.kind === 'special' ? [item.year, item.genres[0] ?? 'Special'].filter(Boolean).join(' · ') : item.year ?? 'Movie'}</p>
-  </article>;
-}
 function ShowCard({ show, onOpen, onMenu }: { show: TvShow; onOpen: (show: TvShow) => void; onMenu: (event: ReactMouseEvent, show: TvShow) => void }) {
   const primary = resolveMediaUrl(show.representative.posterUrl), fallback = resolveMediaUrl(show.representative.thumbnailUrl);
   return <article className="media-card show-card" onClick={() => onOpen(show)} onContextMenu={event => onMenu(event, show)}>

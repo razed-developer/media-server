@@ -1,32 +1,20 @@
 import { useEffect, useState } from "react";
+import { Save, UserRound } from "lucide-react";
 import {
-  Film,
-  FolderOpen,
-  RefreshCw,
-  Save,
-  Tv,
-  UserRound,
-} from "lucide-react";
-import {
-  chooseLibraryPath,
   clearThumbnailCache,
   createUser,
   deleteUser,
   getActiveUserId,
-  getLibraryScanProgress,
   getServerStatus,
   isTauriDesktop,
   getUserPreferences,
   listUsers,
   metadataProviderStatus,
   renameUser,
-  rescanLibrary,
   setActiveUserId,
   setIbroadcastClientId,
-  setSplitContinueWatching,
   setUserTheme,
 } from "../api";
-import { addLibraryRoot, removeLibraryRoot } from "../libraryRootsApi";
 import {
   activityEntries as loadActivityEntries,
   clearActivity,
@@ -36,7 +24,6 @@ import type {
   ActivityEntry,
   MetadataProviderStatus,
   ServerStatus,
-  ScanProgress,
   ThemeName,
   UserProfile,
 } from "../types";
@@ -44,10 +31,7 @@ import { LiveChannelsSettings } from "./LiveChannelsSettings";
 import { LibraryHealthSettings } from "./LibraryHealthSettings";
 import { SubtitleSettings } from "./SubtitleSettings";
 import { WishlistView } from "./WishlistView";
-import { CollectionSourcesSettings } from "./CollectionSourcesSettings";
 import { SettingsNavigation, type SettingsCategory } from "../features/settings/SettingsNavigation";
-import { LibraryRootCard } from "../features/settings/LibraryRootCard";
-import { ContinueWatchingSettings } from "../features/settings/ContinueWatchingSettings";
 import { ActivityConsole } from "../features/settings/ActivityConsole";
 import { CacheSettings } from "../features/settings/CacheSettings";
 import { BackupRestoreSettings } from "../features/settings/BackupRestoreSettings";
@@ -57,6 +41,7 @@ import { AppearanceSettings } from "../features/settings/AppearanceSettings";
 import { GeneralSettings } from "../features/settings/GeneralSettings";
 import { MusicSettings } from "../features/settings/MusicSettings";
 import { RemoteAccessSettings } from "../features/settings/RemoteAccessSettings";
+import { LibrarySettings } from "../features/settings/LibrarySettings";
 import "../activityConsole.css";
 import "../funnelSettings.css";
 
@@ -77,9 +62,6 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [providers, setProviders] = useState<MetadataProviderStatus[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
-  const [libraryBusy, setLibraryBusy] = useState(false);
-  const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
-  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const syncUsers = (next: UserProfile[]) => {
     setUsers(next);
     setNameDrafts(Object.fromEntries(next.map((user) => [user.id, user.name])));
@@ -125,70 +107,6 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     const timer = window.setInterval(() => void refreshActivity(), 1500);
     return () => window.clearInterval(timer);
   }, [category]);
-  useEffect(() => {
-    if (!libraryBusy) return;
-    const update = () =>
-      void getLibraryScanProgress()
-        .then(setScanProgress)
-        .catch(() => undefined);
-    update();
-    const timer = window.setInterval(update, 400);
-    return () => window.clearInterval(timer);
-  }, [libraryBusy]);
-  const addFolder = async (kind: "movie" | "tv" | "special") => {
-    const path = await chooseLibraryPath();
-    if (!path) return;
-    setLibraryBusy(true);
-    setLibraryMessage(
-      `Scanning ${kind === "movie" ? "movie" : kind === "tv" ? "TV" : "specials"} folder… This can take several minutes for a large library.`,
-    );
-    setError(null);
-    try {
-      await addLibraryRoot(kind, path);
-      await refresh();
-      onChanged?.();
-      setLibraryMessage("Library scan complete.");
-    } catch (c) {
-      setError(String(c));
-      setLibraryMessage(null);
-    } finally {
-      setLibraryBusy(false);
-    }
-  };
-  const removeFolder = async (kind: "movie" | "tv" | "special", path: string) => {
-    setLibraryBusy(true);
-    setLibraryMessage("Updating folders and rescanning the library…");
-    setError(null);
-    try {
-      await removeLibraryRoot(kind, path);
-      await refresh();
-      onChanged?.();
-      setLibraryMessage("Library scan complete.");
-    } catch (c) {
-      setError(String(c));
-      setLibraryMessage(null);
-    } finally {
-      setLibraryBusy(false);
-    }
-  };
-  const rescan = async () => {
-    setLibraryBusy(true);
-    setLibraryMessage(
-      "Scanning all configured libraries… This can take several minutes.",
-    );
-    setError(null);
-    try {
-      await rescanLibrary();
-      onChanged?.();
-      await refresh();
-      setLibraryMessage("Library scan complete.");
-    } catch (c) {
-      setError(String(c));
-      setLibraryMessage(null);
-    } finally {
-      setLibraryBusy(false);
-    }
-  };
   const addUser = async () => {
     const name = newUserName.trim();
     if (!name) return;
@@ -253,10 +171,6 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
       setError(String(c));
     }
   };
-  const moviePaths =
-    status?.moviePaths ?? (status?.moviePath ? [status.moviePath] : []);
-  const tvPaths = status?.tvPaths ?? (status?.tvPath ? [status.tvPath] : []);
-  const specialPaths = status?.specialPaths ?? [];
   const activeProfile = users.find((user) => user.id === active) ?? users[0];
   const canManageFunnel = isTauriDesktop() || Boolean(activeProfile?.isAdmin);
   return (
@@ -266,79 +180,14 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
         {error && <div className="error-banner">{error}</div>}
         {category === "general" && <GeneralSettings status={status} />}
         {category === "library" && (
-          <>
-            <p className="eyebrow">MEDIA</p>
-            <h1>Libraries</h1>
-            {libraryMessage && (
-              <div className="settings-card library-scan-status">
-                <RefreshCw className={libraryBusy ? "spin" : ""} size={18} />
-                <div>
-                  <strong>
-                    {libraryBusy
-                      ? "Library scan in progress"
-                      : "Library updated"}
-                  </strong>
-                  <p>{libraryMessage}</p>
-                  {libraryBusy && scanProgress && (
-                    <>
-                      <p className="scan-counts">
-                        {scanProgress.phase === "discovering"
-                          ? `${scanProgress.discovered} media files discovered`
-                          : `${scanProgress.inspected} of ${scanProgress.discovered} media files inspected`}
-                      </p>
-                      {scanProgress.currentPath && (
-                        <code title={scanProgress.currentPath}>
-                          {scanProgress.currentPath}
-                        </code>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-            <ContinueWatchingSettings
-              split={splitContinueWatching}
-              onChange={(split) => {
-                setSplitContinueWatchingState(split);
-                void setSplitContinueWatching(split)
-                  .then(() => onChanged?.())
-                  .catch((cause) => {
-                    setSplitContinueWatchingState(!split);
-                    setError(String(cause));
-                  });
-              }}
-            />
-            <LibraryRootCard
-              kind="movie"
-              paths={moviePaths}
-              icon={Film}
-              busy={libraryBusy}
-              onAdd={(kind) => void addFolder(kind)}
-              onRemove={(kind, path) => void removeFolder(kind, path)}
-            />
-            <LibraryRootCard
-              kind="tv"
-              paths={tvPaths}
-              icon={Tv}
-              busy={libraryBusy}
-              onAdd={(kind) => void addFolder(kind)}
-              onRemove={(kind, path) => void removeFolder(kind, path)}
-            />
-            <LibraryRootCard
-              kind="special"
-              paths={specialPaths}
-              icon={FolderOpen}
-              busy={libraryBusy}
-              onAdd={(kind) => void addFolder(kind)}
-              onRemove={(kind, path) => void removeFolder(kind, path)}
-            />
-            <p className="muted">Specials folders are scanned recursively. Onyx uses filenames as titles and does not request TMDB metadata or artwork.</p>
-            <CollectionSourcesSettings onChanged={onChanged}/>
-            <button disabled={libraryBusy} onClick={() => void rescan()}>
-              <RefreshCw className={libraryBusy ? "spin" : ""} size={17} />
-              {libraryBusy ? "Scanning libraries…" : "Rescan libraries"}
-            </button>
-          </>
+          <LibrarySettings
+            status={status}
+            splitContinueWatching={splitContinueWatching}
+            onSplitContinueWatchingChange={setSplitContinueWatchingState}
+            onRefresh={refresh}
+            onChanged={onChanged}
+            onError={setError}
+          />
         )}
         {category === "backup" && (
           <BackupRestoreSettings

@@ -252,7 +252,7 @@ function App() {
   const collectionGroups = useMemo(() => {
     const grouped = new Map<string, MediaItem[]>();
     for (const item of selectedCollection?.items ?? []) { const folder = item.collectionFolder || 'Unsorted'; grouped.set(folder, [...(grouped.get(folder) ?? []), item]); }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, values]) => ({ folder, values }));
+    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, values]) => ({ folder, values: [...values].sort((a, b) => a.title.localeCompare(b.title)) }));
   }, [selectedCollection]);
   const specialGroups = useMemo(() => {
     const order = ['Documentaries', 'Comedy Specials', 'Other Specials', 'Unmatched'];

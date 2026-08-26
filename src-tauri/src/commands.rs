@@ -194,7 +194,7 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
                 }
             };
             let mut found=library::scan(&root,&state.database_path,hint.as_deref(),&mut report)?;
-            if let Some(source)=source{for item in &mut found{item.collection_source_id=Some(source.id.clone());item.collection_source_name=Some(source.name.clone());item.collection_protected=source.protected;item.collection_folder=Path::new(&item.path).parent().and_then(|parent|parent.strip_prefix(&source.path).ok()).and_then(|relative|relative.components().next()).map(|part|part.as_os_str().to_string_lossy().to_string()).or_else(||Some("Unsorted".into()));}}
+            if let Some(source)=source{for item in &mut found{let path=Path::new(&item.path);item.title=path.file_stem().map(|name|name.to_string_lossy().to_string()).unwrap_or_else(||item.title.clone());item.year=None;item.collection_source_id=Some(source.id.clone());item.collection_source_name=Some(source.name.clone());item.collection_protected=source.protected;item.collection_folder=path.parent().and_then(|parent|parent.strip_prefix(&source.path).ok()).and_then(|relative|relative.components().next()).map(|part|part.as_os_str().to_string_lossy().to_string()).or_else(||Some("Unsorted".into()));}}
             media.extend(found);
             discovered_before += root_discovered;
             inspected_before += root_inspected;

@@ -2,10 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AnalyticsSummary,
   AuthStatus,
-  BackupPreview,
-  CaptionStatus,
-  CollectionSource,
-  CollectionSourceInput,
   GuideChannel,
   FunnelStatus,
   IbConnectionStatus,
@@ -20,48 +16,32 @@ import type {
   MetadataProviderStatus,
   MetadataSearchResult,
   Playlist,
-  RestoreReport,
-  RootMapping,
   ServerStatus,
-  SleepVideoStatus,
   SetupStatus,
-  ScanProgress,
   ThemeName,
   UserPreferences,
   UserProfile,
 } from "./types";
+import {
+  activeUserId,
+  browserFetch,
+  isTauriDesktop,
+  json,
+  serverBaseUrl,
+} from "./api/core";
 
-export async function getCaptionStatus(): Promise<CaptionStatus> {
-  if (!isTauriDesktop()) throw new Error("Caption setup is managed from the desktop server app.");
-  return invoke<CaptionStatus>("caption_status");
-}
-export async function configureCaptions(input: { enabled: boolean; autoNew: boolean; language: string; executable?: string; modelPath?: string }): Promise<CaptionStatus> {
-  if (!isTauriDesktop()) throw new Error("Caption setup is managed from the desktop server app.");
-  return invoke<CaptionStatus>("caption_configure", input);
-}
-export async function generateCaptions(mediaId: string, force = false): Promise<boolean> {
-  if (!isTauriDesktop()) throw new Error("Caption generation is managed from the desktop server app.");
-  return invoke<boolean>("caption_generate", { mediaId, force });
-}
-export async function generateMissingCaptions(): Promise<number> {
-  if (!isTauriDesktop()) throw new Error("Caption generation is managed from the desktop server app.");
-  return invoke<number>("caption_generate_missing");
-}
-export async function getSleepVideos(): Promise<SleepVideoStatus> {
-  if (isTauriDesktop()) return invoke<SleepVideoStatus>("sleep_video_status");
-  return json(await browserFetch(`${serverBaseUrl()}/api/sleep-videos`), "Could not load sleep videos");
-}
-export async function configureSleepVideos(path?: string): Promise<SleepVideoStatus> {
-  if (!isTauriDesktop()) throw new Error("The sleep video folder is managed from the desktop server app.");
-  return invoke<SleepVideoStatus>("sleep_video_configure", { path });
-}
-export async function listCollectionSources():Promise<CollectionSource[]>{if(!isTauriDesktop())return [];return invoke<CollectionSource[]>('collection_sources_list')}
-export async function chooseCollectionFolder():Promise<string|null>{if(!isTauriDesktop())return null;const{open}=await import('@tauri-apps/plugin-dialog');const selected=await open({directory:true,multiple:false});return typeof selected==='string'?selected:null}
-export async function saveCollectionSource(input:CollectionSourceInput):Promise<CollectionSource[]>{return invoke<CollectionSource[]>('collection_source_save',{input})}
-export async function deleteCollectionSource(sourceId:string):Promise<CollectionSource[]>{return invoke<CollectionSource[]>('collection_source_delete',{sourceId})}
-export async function unlockCollectionSource(sourceId:string,pin:string):Promise<string>{return invoke<string>('collection_source_unlock',{sourceId,userId:activeUserId,pin})}
-export async function touchCollectionSource(token:string):Promise<void>{return invoke('collection_source_touch',{token})}
-export async function lockCollectionSource(token:string):Promise<void>{return invoke('collection_source_lock',{token})}
+export {
+  getActiveUserId,
+  isTauriDesktop,
+  resolveMediaUrl,
+  serverBaseUrl,
+  setActiveUserId,
+} from "./api/core";
+export * from "./api/captions";
+export * from "./api/collections";
+export * from "./api/sleepVideos";
+export * from "./api/backups";
+export * from "./api/library";
 export interface IdentityInput {
   title?: string;
   year?: number;
@@ -69,46 +49,6 @@ export interface IdentityInput {
   showTitle?: string;
   season?: number;
   episode?: number;
-}
-export const isTauriDesktop = () =>
-  Boolean(
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__,
-  );
-export const serverBaseUrl = () =>
-  isTauriDesktop() ? "http://127.0.0.1:8765" : "";
-export const resolveMediaUrl = (url?: string | null) => {
-  if (!url) return undefined;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${serverBaseUrl()}${url.startsWith("/") ? url : `/${url}`}`;
-};
-let activeUserId =
-  localStorage.getItem("onyx-user") ||
-  localStorage.getItem("home-media-user") ||
-  "owner";
-export const getActiveUserId = () => activeUserId;
-export const setActiveUserId = (id: string) => {
-  activeUserId = id;
-  localStorage.setItem("onyx-user", id);
-};
-const userHeaders = (extra: Record<string, string> = {}) => ({
-  "x-home-media-user": activeUserId,
-  ...extra,
-});
-const browserFetch = (input: string, init?: RequestInit) =>
-  fetch(input, {
-    ...init,
-    credentials: "include",
-    headers: {
-      ...userHeaders(),
-      ...((init?.headers as Record<string, string> | undefined) ?? {}),
-    },
-  });
-async function json<T>(response: Response, message: string): Promise<T> {
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `${message} (${response.status})`);
-  }
-  return response.json();
 }
 export async function getAuthStatus(): Promise<AuthStatus> {
   if (isTauriDesktop()) return { required: false, authenticated: true };
@@ -463,86 +403,6 @@ export async function getLiveChannelGuide(): Promise<GuideChannel[]> {
 export const liveChannelStreamUrl = (mediaId: string, offsetSeconds: number) =>
   `${serverBaseUrl()}/api/live-channels/play/${encodeURIComponent(mediaId)}/${Math.max(0, Math.floor(offsetSeconds))}`;
 
-export async function getLibraryScanProgress(): Promise<ScanProgress> {
-  if (!isTauriDesktop())
-    return {
-      active: false,
-      phase: "idle",
-      discovered: 0,
-      inspected: 0,
-      startedAt: 0,
-    };
-  return invoke<ScanProgress>("library_scan_progress");
-}
-export async function rescanLibrary(): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error("Library rescans are managed from the desktop server app.");
-  await invoke("scan_library");
-}
-export async function chooseLibraryPath(): Promise<string | null> {
-  if (!isTauriDesktop()) return null;
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({ directory: true, multiple: false });
-  return typeof selected === "string" ? selected : null;
-}
-export async function chooseBackupDestination(): Promise<string | null> {
-  if (!isTauriDesktop()) return null;
-  const { save } = await import("@tauri-apps/plugin-dialog");
-  return save({
-    defaultPath: `Onyx-backup-${new Date().toISOString().slice(0, 10)}.onyx-backup`,
-    filters: [{ name: "Onyx Backup", extensions: ["onyx-backup"] }],
-  });
-}
-export async function chooseBackupFile(): Promise<string | null> {
-  if (!isTauriDesktop()) return null;
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({
-    multiple: false,
-    directory: false,
-    filters: [{ name: "Onyx Backup", extensions: ["onyx-backup"] }],
-  });
-  return typeof selected === "string" ? selected : null;
-}
-export async function createBackup(
-  path: string,
-  password: string,
-): Promise<BackupPreview> {
-  return invoke<BackupPreview>("backup_create", { path, password });
-}
-export async function previewBackup(
-  path: string,
-  password: string,
-): Promise<BackupPreview> {
-  return invoke<BackupPreview>("backup_preview", { path, password });
-}
-export async function restoreBackup(
-  path: string,
-  password: string,
-  mode: "merge" | "replace",
-  mappings: RootMapping[],
-): Promise<RestoreReport> {
-  return invoke<RestoreReport>("backup_restore", {
-    path,
-    password,
-    mode,
-    mappings,
-  });
-}
-export async function setLibraryPath(path: string): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error("Library folders are managed from the desktop server app.");
-  await invoke("set_library_path", { path });
-}
-export async function setMoviePath(path: string): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error("Movie folders are managed from the desktop server app.");
-  await invoke("set_movie_path", { path });
-}
-export async function setTvPath(path: string): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error("TV folders are managed from the desktop server app.");
-  await invoke("set_tv_path", { path });
-}
 export async function setAccessPassword(password: string): Promise<void> {
   if (isTauriDesktop()) {
     await invoke("set_access_password", { password });
@@ -574,11 +434,6 @@ export async function setFunnelEnabled(enabled: boolean): Promise<FunnelStatus> 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
   }), "Could not update Funnel status");
-}
-export async function clearThumbnailCache(): Promise<void> {
-  if (!isTauriDesktop())
-    throw new Error("Artwork cache is managed from the desktop server app.");
-  await invoke("clear_thumbnail_cache");
 }
 export async function identifyItem(
   id: string,

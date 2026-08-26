@@ -155,7 +155,7 @@ fn show_root(item: &MediaItem) -> PathBuf {
     }
 }
 
-fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
+fn scan(state: &crate::app_state::AppState, target: Option<&str>) -> Result<Vec<MediaItem>, String> {
     crate::activity::info("Library", "Scanning configured media libraries");
     let started_at = chrono::Utc::now().timestamp();
     if let Ok(mut progress) = state.scan_progress.write() {
@@ -176,8 +176,12 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
             roots.extend(special_paths.into_iter().map(|root| (PathBuf::from(root), Some("special".into()),None)));
         }
         for source in crate::collection_sources::list(&state.provider_path)?{roots.push((PathBuf::from(&source.path),Some("collection".into()),Some(source)))}
+        if let Some(target) = target {
+            roots.retain(|(_, hint, source)| match target { "movie" => hint.as_deref()==Some("movie"), "tv" => hint.as_deref()==Some("episode"), "special" => hint.as_deref()==Some("special"), value if value.starts_with("collection:") => source.as_ref().is_some_and(|item|item.id==value.trim_start_matches("collection:")), _ => false });
+            if roots.is_empty(){return Err(format!("No configured library found for {target}"));}
+        }
 
-        let mut media = Vec::new();
+        let mut media = if let Some(target)=target { state.media.read().map_err(|_|"Media lock poisoned")?.iter().filter(|item|match target{"movie"=>item.kind!="movie","tv"=>item.kind!="episode","special"=>item.kind!="special",value if value.starts_with("collection:")=>item.collection_source_id.as_deref()!=Some(value.trim_start_matches("collection:")),_=>true}).cloned().collect() } else { Vec::new() };
         let mut discovered_before = 0usize;
         let mut inspected_before = 0usize;
         for (root, hint, source) in roots {
@@ -318,7 +322,7 @@ pub async fn set_library_path(path: String, state: TauriState<'_, Shared>) -> Re
         validate_folder(&path)?;
         shared.settings.write().map_err(|_| "Settings lock poisoned")?.library_path = Some(path);
         persist_settings(&shared)?;
-        scan(&shared)?;
+        scan(&shared,None)?;
         Ok(())
     }).await.map_err(|error| format!("Library worker failed: {error}"))?
 }
@@ -344,8 +348,8 @@ async fn remove_root_async(state: TauriState<'_, Shared>, kind: &'static str, pa
 #[tauri::command] pub async fn add_special_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { update_root_async(state, "special", path, true).await }
 #[tauri::command] pub async fn remove_special_path(path: String, state: TauriState<'_, Shared>) -> Result<(), String> { remove_root_async(state, "special", path).await }
 
-#[tauri::command]pub async fn collection_source_save(input:crate::collection_sources::CollectionSourceInput,state:TauriState<'_,Shared>)->Result<Vec<crate::collection_sources::CollectionSource>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{crate::collection_sources::save(&shared.provider_path,input)?;scan(&shared)?;crate::collection_sources::public_list(&shared.provider_path)}).await.map_err(|e|format!("Collection worker failed: {e}"))?}
-#[tauri::command]pub async fn collection_source_delete(source_id:String,state:TauriState<'_,Shared>)->Result<Vec<crate::collection_sources::CollectionSource>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{crate::collection_sources::delete(&shared.provider_path,&source_id)?;scan(&shared)?;crate::collection_sources::public_list(&shared.provider_path)}).await.map_err(|e|format!("Collection worker failed: {e}"))?}
+#[tauri::command]pub async fn collection_source_save(input:crate::collection_sources::CollectionSourceInput,state:TauriState<'_,Shared>)->Result<Vec<crate::collection_sources::CollectionSource>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{crate::collection_sources::save(&shared.provider_path,input)?;scan(&shared,None)?;crate::collection_sources::public_list(&shared.provider_path)}).await.map_err(|e|format!("Collection worker failed: {e}"))?}
+#[tauri::command]pub async fn collection_source_delete(source_id:String,state:TauriState<'_,Shared>)->Result<Vec<crate::collection_sources::CollectionSource>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||{crate::collection_sources::delete(&shared.provider_path,&source_id)?;scan(&shared,None)?;crate::collection_sources::public_list(&shared.provider_path)}).await.map_err(|e|format!("Collection worker failed: {e}"))?}
 
 pub(crate) fn set_access_password_for_state(password: String, state: &Shared) -> Result<(), String> {
     if password.chars().count() < 8 { return Err("Access password must be at least 8 characters".into()); }
@@ -380,9 +384,11 @@ pub fn library_scan_progress(state: TauriState<'_, Shared>) -> Result<ScanProgre
 #[tauri::command]
 pub async fn scan_library(state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
     let shared = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || scan(&shared))
+    tauri::async_runtime::spawn_blocking(move || scan(&shared, None))
         .await.map_err(|error| format!("Library worker failed: {error}"))?
 }
+#[tauri::command]
+pub async fn scan_library_kind(kind:String,state:TauriState<'_,Shared>)->Result<Vec<MediaItem>,String>{let shared=state.inner().clone();tauri::async_runtime::spawn_blocking(move||scan(&shared,Some(&kind))).await.map_err(|error|format!("Library worker failed: {error}"))?}
 #[tauri::command] pub fn list_users(state: TauriState<'_, Shared>) -> Result<Vec<UserProfile>, String> { database::list_users(&state.database_path) }
 #[tauri::command] pub fn create_user(name: String, state: TauriState<'_, Shared>) -> Result<Vec<UserProfile>, String> { database::create_user(&state.database_path, &name)?; database::list_users(&state.database_path) }
 #[tauri::command] pub fn rename_user(user_id: String, name: String, state: TauriState<'_, Shared>) -> Result<Vec<UserProfile>, String> { database::rename_user(&state.database_path, &user_id, &name)?; database::list_users(&state.database_path) }
@@ -438,12 +444,12 @@ pub fn identify_item(id: String, identity: IdentityInput, state: TauriState<'_, 
         episode: identity.episode,
     };
     database::save_identity_override(&state.database_path, &id, &value)?;
-    scan(&state)
+    scan(&state,None)
 }
 #[tauri::command]
 pub fn reset_identification(id: String, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
     database::clear_identity_override(&state.database_path, &id)?;
-    scan(&state)
+    scan(&state,None)
 }
 #[tauri::command]
 pub fn identify_show(id: String, show_title: String, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
@@ -452,7 +458,7 @@ pub fn identify_show(id: String, show_title: String, state: TauriState<'_, Share
     let item = state.media.read().map_err(|_| "Media lock poisoned")?.iter().find(|media| media.id == id).cloned().ok_or("Media item not found")?;
     if item.kind != "episode" { return Err("Selected item is not a TV episode".into()); }
     database::save_show_override(&state.database_path, &show_root(&item).to_string_lossy(), title)?;
-    scan(&state)
+    scan(&state,None)
 }
 
 #[tauri::command] pub fn list_playlists(user_id: String, state: TauriState<'_, Shared>) -> Result<Vec<Playlist>, String> { ensure_user(&state, &user_id)?; database::list_playlists(&state.database_path, &user_id) }

@@ -25,8 +25,11 @@ import type {
   MetadataProviderStatus,
   ServerStatus,
   ThemeName,
+  ContinueWatchingLayout,
+  LibraryNavigationId,
   UserProfile,
 } from "../types";
+import { loadContinueWatchingLayout, loadLibraryOrder, saveContinueWatchingLayout, saveLibraryOrder } from "../preferences/navigationPreferences";
 import { LiveChannelsSettings } from "./LiveChannelsSettings";
 import { LibraryHealthSettings } from "../features/library-health/LibraryHealthSettings";
 import { SubtitleSettings } from "./SubtitleSettings";
@@ -52,8 +55,8 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [avatars, setAvatars] = useState<Record<string, UserAvatar>>({});
   const [active, setActive] = useState(getActiveUserId());
   const [theme, setTheme] = useState<ThemeName>("onyx");
-  const [splitContinueWatching, setSplitContinueWatchingState] =
-    useState(false);
+  const [continueWatchingLayout, setContinueWatchingLayoutState] = useState<ContinueWatchingLayout>("all");
+  const [libraryOrder, setLibraryOrderState] = useState<LibraryNavigationId[]>([]);
   const [clientId, setClientId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [newUserOpen, setNewUserOpen] = useState(false);
@@ -83,7 +86,8 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
       syncUsers(u);
       syncAvatars(a);
       setTheme(p.theme);
-      setSplitContinueWatchingState(p.splitContinueWatching);
+      setContinueWatchingLayoutState(loadContinueWatchingLayout(getActiveUserId(), p.splitContinueWatching));
+      setLibraryOrderState(loadLibraryOrder(getActiveUserId()));
       setClientId(s.ibroadcastClientId ?? "");
       setProviders(m);
       setError(null);
@@ -152,6 +156,8 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
     setActive(id);
     const p = await getUserPreferences();
     setTheme(p.theme);
+    setContinueWatchingLayoutState(loadContinueWatchingLayout(id, p.splitContinueWatching));
+    setLibraryOrderState(loadLibraryOrder(id));
     onChanged?.();
   };
   const chooseTheme = async (value: ThemeName) => {
@@ -182,8 +188,10 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
         {category === "library" && (
           <LibrarySettings
             status={status}
-            splitContinueWatching={splitContinueWatching}
-            onSplitContinueWatchingChange={setSplitContinueWatchingState}
+            continueWatchingLayout={continueWatchingLayout}
+            libraryOrder={libraryOrder}
+            onContinueWatchingLayoutChange={(layout) => { setContinueWatchingLayoutState(layout); saveContinueWatchingLayout(active, layout); onChanged?.(); }}
+            onLibraryOrderChange={(order) => { setLibraryOrderState(order); saveLibraryOrder(active, order); onChanged?.(); }}
             onRefresh={refresh}
             onChanged={onChanged}
             onError={setError}

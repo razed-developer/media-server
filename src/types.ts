@@ -7,6 +7,14 @@ export type ThemeName =
   | "light"
   | "pink"
   | "royal";
+export type ContinueWatchingLayout =
+  | "all"
+  | "movies-shows"
+  | "movies-shows-split"
+  | "movies-shows-others"
+  | "movies-shows-specials"
+  | "movies-specials-shows";
+export type LibraryNavigationId = "movies" | "tv" | "specials" | `collection:${string}`;
 export interface SubtitleTrack {
   label: string;
   language: string;

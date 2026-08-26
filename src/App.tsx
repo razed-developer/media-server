@@ -10,9 +10,10 @@ import {
   getAuthStatus, getServerStatus, getUserPreferences, identifyItem, identifyShow,
   isTauriDesktop, listMedia, listPlaylists, listUsers, lockCollectionSource, login, logout,
   removeFromPlaylist, resetIdentification, resetWatchStatus, resolveMediaUrl,
-  saveProgress as persistProgress, setActiveUserId, setHidden, touchCollectionSource, unlockCollectionSource,
+  rescanLibraryKind, saveProgress as persistProgress, setActiveUserId, setHidden, touchCollectionSource, unlockCollectionSource,
 } from './api';
-import type { AnalyticsSummary, MediaItem, Playlist, ServerStatus, ThemeName, UserProfile } from './types';
+import type { AnalyticsSummary, ContinueWatchingLayout, LibraryNavigationId, MediaItem, Playlist, ServerStatus, ThemeName, UserProfile } from './types';
+import { loadContinueWatchingLayout, loadLibraryOrder } from './preferences/navigationPreferences';
 import { listUserAvatars, type RecommendationEntry, type UserAvatar } from './userFeaturesApi';
 import { LiveChannelsView } from './components/LiveChannelsView';
 import { MetadataMatchDialog } from './components/MetadataMatchDialog';
@@ -79,7 +80,8 @@ function App() {
   const [status, setStatus] = useState<ServerStatus>(fallbackStatus);
   const [analytics, setAnalytics] = useState<AnalyticsSummary>(emptyAnalytics);
   const [, setThemeState] = useState<ThemeName>('onyx');
-  const [splitContinueWatching, setSplitContinueWatching] = useState(false);
+  const [continueWatchingLayout, setContinueWatchingLayout] = useState<ContinueWatchingLayout>('all');
+  const [libraryOrder, setLibraryOrder] = useState<LibraryNavigationId[]>([]);
   const [query, setQuery] = useState('');
   const [section, setSection] = useState<Section>(projectorMode ? 'live' : 'home');
   const [tvView, setTvView] = useState<TvView>('season');
@@ -109,7 +111,7 @@ function App() {
     try {
       window.dispatchEvent(new CustomEvent('onyx-startup-status',{detail:{message:'Loading shows…'}}));
       const [library, serverStatus, prefs] = await Promise.all([listMedia(), getServerStatus(), getUserPreferences()]);
-      setItems(library); setStatus(serverStatus); applyTheme(prefs.theme); setSplitContinueWatching(prefs.splitContinueWatching); setError(null);
+      setItems(library); setStatus(serverStatus); applyTheme(prefs.theme); setContinueWatchingLayout(loadContinueWatchingLayout(getActiveUserId(), prefs.splitContinueWatching)); setLibraryOrder(loadLibraryOrder(getActiveUserId())); setError(null);
       const optional = await Promise.allSettled([listPlaylists(), getAnalytics(), listUsers(), listUserAvatars()] as const);
       const playlistData = optional[0].status === 'fulfilled' ? optional[0].value : [];
       setPlaylists(playlistData);
@@ -158,6 +160,7 @@ function App() {
     for (const item of selectedCollection?.items ?? []) { const folder = item.collectionFolder || 'Unsorted'; grouped.set(folder, [...(grouped.get(folder) ?? []), item]); }
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([folder, values]) => ({ folder, values: [...values].sort((a, b) => a.title.localeCompare(b.title)) }));
   }, [selectedCollection]);
+  const collectionContinueItems = useMemo(() => (selectedCollection?.items ?? []).filter(item => item.progressSeconds > 0 && (!item.durationSeconds || item.progressSeconds / item.durationSeconds < .995)).sort((a,b)=>(b.lastWatchedAt??0)-(a.lastWatchedAt??0)).slice(0,14), [selectedCollection]);
   const specialGroups = useMemo(() => {
     const order = ['Documentaries', 'Comedy Specials', 'Other Specials', 'Unmatched'];
     const groups = new Map<string, MediaItem[]>();
@@ -182,8 +185,6 @@ function App() {
   const generallyVisibleItems = useMemo(() => items.filter(item => !item.collectionProtected || Boolean(item.collectionSourceId && collectionSessions[item.collectionSourceId])), [items, collectionSessions]);
   const historyItems = useMemo(() => generallyVisibleItems.filter(item => Boolean(item.lastWatchedAt)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)), [generallyVisibleItems]);
   const continueItems = useMemo(() => generallyVisibleItems.filter(item => item.progressSeconds > 0 && (!item.durationSeconds || item.progressSeconds / item.durationSeconds < .995)).sort((a, b) => (b.lastWatchedAt ?? 0) - (a.lastWatchedAt ?? 0)).slice(0, 14), [generallyVisibleItems]);
-  const continueMovies = useMemo(() => continueItems.filter(item => item.kind === 'movie'), [continueItems]);
-  const continueEpisodes = useMemo(() => continueItems.filter(item => item.kind === 'episode'), [continueItems]);
   const recentMovies = useMemo(() => [...movies].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 12), [movies]);
   const recentShows = useMemo(() => [...shows].sort((a, b) => b.addedAt - a.addedAt).slice(0, 12), [shows]);
   const selectedShow = useMemo(() => shows.find(s => s.title === selectedShowTitle) ?? null, [shows, selectedShowTitle]);
@@ -244,6 +245,7 @@ function App() {
   const openCollection = (id: string) => { if (selected) pauseForNavigation(); setSelectedCollectionId(id); setSection('collection'); setQuery(''); setError(null); };
   const toggleCollectionLock = async (source: { id: string; name: string; protected: boolean }) => { if (!source.protected) return; const session = collectionSessions[source.id]; if (session) { await lockCollectionSource(session.token); sessionStorage.removeItem(`onyx-collection-unlock:${source.id}`); setCollectionSessions(current => { const next = { ...current }; delete next[source.id]; return next; }); if (selectedCollectionId === source.id) setSelected(null); return; } openCollection(source.id); };
   const clearHistory = async () => { const ids = items.filter(item => item.lastWatchedAt || item.progressSeconds > 0).map(item => item.id); if (ids.length && window.confirm('Clear all watch history for this profile?')) await resetWatched(ids); };
+  const scanOneLibrary = async (kind: 'movie'|'tv'|'special'|`collection:${string}`, label: string) => { if (!window.confirm(`Scan ${label} for new or changed media?`)) return; try { setError(`Scanning ${label}…`); await rescanLibraryKind(kind); await refresh(); setError(null); } catch(cause) { setError(String(cause)); } };
   const unlockCollection = async (pin: string) => { if (!selectedCollection) return; try { const token = await unlockCollectionSource(selectedCollection.id, pin); sessionStorage.setItem(`onyx-collection-unlock:${selectedCollection.id}`, token); setCollectionSessions(current => ({ ...current, [selectedCollection.id]: { token, idleSince: Date.now() } })); setError(null); } catch (cause) { setError(String(cause)); throw cause; } };
   const openRecommendation = (entry: RecommendationEntry) => {
     if (entry.targetType === 'movie') {
@@ -255,7 +257,7 @@ function App() {
     }
   };
 
-  const sidebar = <Sidebar section={section} collections={collections} selectedCollectionId={selectedCollectionId} pausedMedia={pausedMedia} onNavigate={navigate} onOpenCollection={openCollection} onToggleCollectionLock={toggleCollectionLock} onClearHistory={clearHistory} onResume={resumePaused} />;
+  const sidebar = <Sidebar section={section} collections={collections} libraryOrder={libraryOrder} selectedCollectionId={selectedCollectionId} pausedMedia={pausedMedia} onNavigate={navigate} onOpenCollection={openCollection} onToggleCollectionLock={toggleCollectionLock} onScanLibrary={scanOneLibrary} onClearHistory={clearHistory} onResume={resumePaused} />;
 
   const shell = projectorMode ? <div className="projector-shell">
     {error && <div className="error-banner">{error}</div>}
@@ -266,12 +268,12 @@ function App() {
     {sidebar}
     {selected ? <PlayerPage item={selected} videoRef={videoRef} sourceUrl={collectionPlaybackUrl(selected, collectionSessions)} subtitleChoice={subtitleChoice} playableSubtitles={playableSubtitles} episodeLabel={episodeLabel} onBack={closePlayer} onPlay={() => markCollectionPlaying(selected)} onPause={() => { void saveProgress(true); markCollectionIdle(selected); }} onEnded={() => markCollectionIdle(selected)} onTimeUpdate={() => void saveProgress()} onSubtitleChange={changeSubtitle} social={isDesktop && selected.kind === 'movie' ? <SocialBar targetType="movie" targetKey={socialKey(selected)} title={selected.title} posterUrl={selected.posterUrl} users={users} /> : undefined} /> : <main className="content">
       {error && <div className="error-banner">{error}</div>}
-      {section === 'home' && <HomePage activeUser={activeUser} isDesktop={isDesktop} splitContinueWatching={splitContinueWatching} continueItems={continueItems} continueMovies={continueMovies} continueEpisodes={continueEpisodes} recentShows={recentShows} recentMovies={recentMovies} onNavigate={navigate} onRecommendation={openRecommendation} onPlay={startPlayback} onItemMenu={(event, item) => openMenu(event, { type: 'item', item })} onOpenShow={show => { setSection('tv'); setSelectedShowTitle(show.title); }} onShowMenu={(event, show) => openMenu(event, { type: 'show', show })} />}
+      {section === 'home' && <HomePage activeUser={activeUser} isDesktop={isDesktop} continueWatchingLayout={continueWatchingLayout} continueItems={continueItems} recentShows={recentShows} recentMovies={recentMovies} onNavigate={navigate} onRecommendation={openRecommendation} onPlay={startPlayback} onItemMenu={(event, item) => openMenu(event, { type: 'item', item })} onOpenShow={show => { setSection('tv'); setSelectedShowTitle(show.title); }} onShowMenu={(event, show) => openMenu(event, { type: 'show', show })} />}
       {section === 'movies' && <MediaGalleryPage eyebrow="MOVIES" title="Movies" subtitle={`${movies.length} titles`} items={visibleMovies} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
       {section === 'tv' && <TelevisionPage shows={visibleShows} totalShows={shows.length} totalEpisodes={episodes.length} selectedShow={selectedShow} showEpisodes={showEpisodes} seasonGroups={seasonGroups} backdropUrl={showBackdrop} view={tvView} social={isDesktop && selectedShow ? <SocialBar targetType="show" targetKey={showSocialKey} title={selectedShow.title} posterUrl={selectedShow.representative.posterUrl} users={users} /> : undefined} allWatched={allWatched} groupProgress={groupPercent} onOpenShow={show => { setSelectedShowTitle(show.title); setQuery(''); }} onShowMenu={(event, show) => openMenu(event, { type: 'show', show })} onBack={() => { setSelectedShowTitle(null); setQuery(''); }} onView={setTvView} onPlay={startPlayback} onItemMenu={(event, item) => openMenu(event, { type: 'item', item })} onSeasonMenu={(event, season, items) => selectedShow && openMenu(event, { type: 'season', showTitle: selectedShow.title, season, items })} />}
       {section === 'specials' && <SpecialsPage total={specials.length} groups={specialGroups} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
       {section === 'collection' && selectedCollection && selectedCollection.protected && !collectionSessions[selectedCollection.id] && <ProtectedCollectionGate name={selectedCollection.name} onUnlock={unlockCollection} />}
-      {section === 'collection' && selectedCollection && (!selectedCollection.protected || collectionSessions[selectedCollection.id]) && <CollectionPage name={selectedCollection.name} total={selectedCollection.items.length} groups={collectionGroups} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
+      {section === 'collection' && selectedCollection && (!selectedCollection.protected || collectionSessions[selectedCollection.id]) && <CollectionPage name={selectedCollection.name} total={selectedCollection.items.length} groups={collectionGroups} continueItems={collectionContinueItems} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
       {section === 'live' && <LiveChannelsView media={items} onOpenSettings={() => navigate('settings')} />}
       {section === 'music' && <MusicView />}
       {section === 'history' && <MediaGalleryPage eyebrow="HISTORY" title="Recently watched" subtitle={`${historyItems.length} items`} items={visibleHistory} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}

@@ -20,6 +20,11 @@ export async function rescanLibrary(): Promise<void> {
   await invoke("scan_library");
 }
 
+export async function rescanLibraryKind(kind: "movie" | "tv" | "special" | `collection:${string}`): Promise<void> {
+  if (!isTauriDesktop()) throw new Error("Library rescans are managed from the desktop server app.");
+  await invoke("scan_library_kind", { kind });
+}
+
 export async function chooseLibraryPath(): Promise<string | null> {
   if (!isTauriDesktop()) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");

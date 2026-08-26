@@ -4,18 +4,22 @@ import {
   chooseLibraryPath,
   getLibraryScanProgress,
   rescanLibrary,
-  setSplitContinueWatching,
 } from "../../api";
 import { addLibraryRoot, removeLibraryRoot } from "../../libraryRootsApi";
-import type { ScanProgress, ServerStatus } from "../../types";
+import { listCollectionSources } from "../../api";
+import type { CollectionSource, ContinueWatchingLayout, LibraryNavigationId, ScanProgress, ServerStatus } from "../../types";
 import { CollectionSourcesSettings } from "../../components/CollectionSourcesSettings";
 import { ContinueWatchingSettings } from "./ContinueWatchingSettings";
 import { LibraryRootCard, type LibraryKind } from "./LibraryRootCard";
+import { LibraryOrderSettings } from "./LibraryOrderSettings";
+import { completeLibraryOrder } from "../../preferences/navigationPreferences";
 
 interface LibrarySettingsProps {
   status: ServerStatus | null;
-  splitContinueWatching: boolean;
-  onSplitContinueWatchingChange: (split: boolean) => void;
+  continueWatchingLayout: ContinueWatchingLayout;
+  libraryOrder: LibraryNavigationId[];
+  onContinueWatchingLayoutChange: (layout: ContinueWatchingLayout) => void;
+  onLibraryOrderChange: (order: LibraryNavigationId[]) => void;
   onRefresh: () => Promise<void>;
   onChanged?: () => void;
   onError: (message: string) => void;
@@ -29,8 +33,7 @@ const libraryLabels: Record<LibraryKind, string> = {
 
 export function LibrarySettings({
   status,
-  splitContinueWatching,
-  onSplitContinueWatchingChange,
+  continueWatchingLayout, libraryOrder, onContinueWatchingLayoutChange, onLibraryOrderChange,
   onRefresh,
   onChanged,
   onError,
@@ -38,6 +41,7 @@ export function LibrarySettings({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [collectionSources, setCollectionSources] = useState<CollectionSource[]>([]);
   const moviePaths =
     status?.moviePaths ?? (status?.moviePath ? [status.moviePath] : []);
   const tvPaths = status?.tvPaths ?? (status?.tvPath ? [status.tvPath] : []);
@@ -53,6 +57,7 @@ export function LibrarySettings({
     const timer = window.setInterval(update, 400);
     return () => window.clearInterval(timer);
   }, [busy]);
+  useEffect(() => { void listCollectionSources().then(setCollectionSources).catch(() => undefined); }, []);
 
   const addFolder = async (kind: LibraryKind) => {
     const path = await chooseLibraryPath();
@@ -106,15 +111,8 @@ export function LibrarySettings({
     }
   };
 
-  const changeContinueWatching = (split: boolean) => {
-    onSplitContinueWatchingChange(split);
-    void setSplitContinueWatching(split)
-      .then(() => onChanged?.())
-      .catch((cause) => {
-        onSplitContinueWatchingChange(!split);
-        onError(String(cause));
-      });
-  };
+  const availableLibraries = [{ id: "movies" as const, label: "Movies" }, { id: "tv" as const, label: "TV" }, { id: "specials" as const, label: "Specials" }, ...collectionSources.map(source => ({ id: `collection:${source.id}` as LibraryNavigationId, label: source.name }))];
+  const orderedLibraries = completeLibraryOrder(libraryOrder, availableLibraries.map(item => item.id)).map(id => availableLibraries.find(item => item.id === id)!).filter(Boolean);
 
   return (
     <>
@@ -144,9 +142,10 @@ export function LibrarySettings({
         </div>
       )}
       <ContinueWatchingSettings
-        split={splitContinueWatching}
-        onChange={changeContinueWatching}
+        layout={continueWatchingLayout}
+        onChange={onContinueWatchingLayoutChange}
       />
+      <LibraryOrderSettings libraries={orderedLibraries} onChange={onLibraryOrderChange} />
       <LibraryRootCard
         kind="movie"
         paths={moviePaths}
@@ -175,7 +174,7 @@ export function LibrarySettings({
         Specials folders are scanned recursively. Onyx uses filenames as titles
         and does not request TMDB metadata or artwork.
       </p>
-      <CollectionSourcesSettings onChanged={onChanged} />
+      <CollectionSourcesSettings onChanged={async () => { setCollectionSources(await listCollectionSources()); await onChanged?.(); }} />
       <button disabled={busy} onClick={() => void rescan()}>
         <RefreshCw className={busy ? "spin" : ""} size={17} />
         {busy ? "Scanning libraries…" : "Rescan libraries"}

@@ -83,6 +83,7 @@ pub fn scan(
         }));
         let is_episode = parsed.kind == "episode";
         let is_special = parsed.kind == "special"||parsed.kind=="collection";
+        let is_collection = parsed.kind == "collection";
         media.push(MediaItem {
             id: id.clone(),
             title: parsed.title,
@@ -94,8 +95,8 @@ pub fn scan(
             episode_end: parsed.episode_end,
             path: path_text,
             stream_url: format!("/play/{id}"),
-            poster_url: (parsed.kind != "collection").then(|| format!("/art/{id}/poster")),
-            backdrop_url: (parsed.kind != "collection").then(|| format!("/art/{id}/backdrop")),
+            poster_url: (!is_collection).then(|| format!("/art/{id}/poster")),
+            backdrop_url: (!is_collection).then(|| format!("/art/{id}/backdrop")),
             thumbnail_url: (is_episode || is_special).then(|| format!("/art/{id}/thumbnail")),
             subtitles,
             progress_seconds: 0,

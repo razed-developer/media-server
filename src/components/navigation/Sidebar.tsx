@@ -2,7 +2,7 @@ import { BarChart3, Film, FolderOpen, History, Home, ListVideo, Lock, Music2, Pl
 import type { ReactNode } from "react";
 import type { LibraryNavigationId, MediaItem } from "../../types";
 import { completeLibraryOrder } from "../../preferences/navigationPreferences";
-import { SleepTimer } from "../SleepTimer";
+import { SleepTimer } from "../../features/sleep/components/SleepTimer";
 
 export type NavigationSection = "home" | "movies" | "tv" | "specials" | "collection" | "live" | "music" | "history" | "playlists" | "analytics" | "settings" | "hidden";
 export type SidebarCollection = { id: string; name: string; protected: boolean };

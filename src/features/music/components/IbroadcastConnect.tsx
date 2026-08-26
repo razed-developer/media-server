@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, Link2, LoaderCircle, RefreshCw, Unplug } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { disconnectIbroadcast, getActiveUserId, getIbroadcastStatus, isTauriDesktop, syncIbroadcast } from '../api';
-import type { IbConnectionStatus } from '../types';
+import { disconnectIbroadcast, getActiveUserId, getIbroadcastStatus, isTauriDesktop, syncIbroadcast } from '../../../api';
+import type { IbConnectionStatus } from '../../../types';
 
 interface AuthorizationStart {
   authorizationUrl: string;

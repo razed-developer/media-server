@@ -1,6 +1,6 @@
 import { Music2 } from "lucide-react";
 import type { UserProfile } from "../../types";
-import { IbroadcastConnect } from "../../components/IbroadcastConnect";
+import { IbroadcastConnect } from "../music/components/IbroadcastConnect";
 import { IbroadcastLogoKit } from "../../components/IbroadcastLogoKit";
 
 interface SetupMusicStepProps {

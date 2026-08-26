@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getActiveUserId, listUsers } from '../api';
 import type { MediaItem, UserProfile } from '../types';
-import { SocialBar } from './SocialBar';
+import { SocialBar } from '../features/social/components/SocialBar';
 
 function idFromSource(src:string){
  try{const path=new URL(src,window.location.href).pathname;const match=path.match(/\/(?:play|stream)\/([^/]+)/)||path.match(/\/api\/playback\/resume\/([^/]+)/);return match?decodeURIComponent(match[1]):''}catch{return''}

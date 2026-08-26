@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ContinueWatchingLayout, MediaItem, UserProfile } from "../types";
 import type { RecommendationEntry } from "../userFeaturesApi";
-import { RecommendationsRail } from "../components/RecommendationsRail";
+import { RecommendationsRail } from "../features/social/components/RecommendationsRail";
 import { Rail } from "../components/media/Rail";
 import { MediaCard } from "../components/media/MediaCard";
 import { ShowCard, type ShowCardModel } from "../components/media/ShowCard";

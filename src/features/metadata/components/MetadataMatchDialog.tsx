@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, LoaderCircle, Search, Star, X } from 'lucide-react';
-import { applyMetadataMatch, searchMetadata, serverBaseUrl } from '../api';
-import type { MediaItem, MetadataSearchResult } from '../types';
+import { applyMetadataMatch, searchMetadata, serverBaseUrl } from '../../../api';
+import type { MediaItem, MetadataSearchResult } from '../../../types';
 
 export function MetadataMatchDialog({item,onClose,onMatched}:{item:MediaItem;onClose:()=>void;onMatched:(items:MediaItem[])=>void}){
  const initial=item.kind==='episode'?(item.showTitle??item.title):item.title;

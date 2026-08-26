@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Captions, CaptionsOff, LoaderCircle, Radio, RefreshCw, Settings2 } from 'lucide-react';
-import { getActiveUserId, getLiveChannelGuide, listLiveChannels, liveChannelStreamUrl, resolveMediaUrl } from '../api';
-import type { GuideChannel, LiveChannel, MediaItem } from '../types';
+import { getActiveUserId, getLiveChannelGuide, listLiveChannels, liveChannelStreamUrl, resolveMediaUrl } from '../../../api';
+import type { GuideChannel, LiveChannel, MediaItem } from '../../../types';
 import { ChannelArtwork } from './ChannelArtwork';
 
 const WINDOW_SECONDS = 3 * 60 * 60;

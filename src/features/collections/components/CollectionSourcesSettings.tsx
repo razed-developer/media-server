@@ -1,7 +1,7 @@
 import { useEffect,useState } from 'react';
 import { FolderOpen,Lock,Plus,Save,Trash2,X } from 'lucide-react';
-import { chooseCollectionFolder,deleteCollectionSource,listCollectionSources,saveCollectionSource } from '../api';
-import type { CollectionSource } from '../types';
+import { chooseCollectionFolder,deleteCollectionSource,listCollectionSources,saveCollectionSource } from '../../../api';
+import type { CollectionSource } from '../../../types';
 
 export function CollectionSourcesSettings({onChanged}:{onChanged?:()=>void|Promise<void>}){
  const[sources,setSources]=useState<CollectionSource[]>([]);const[editing,setEditing]=useState<CollectionSource>();const[name,setName]=useState('Collections');const[path,setPath]=useState('');const[protectedSource,setProtected]=useState(false);const[pin,setPin]=useState('');const[busy,setBusy]=useState(false);const[error,setError]=useState<string>();

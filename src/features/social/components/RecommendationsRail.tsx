@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MessageCircleHeart } from 'lucide-react';
-import { markRecommendationRead, listRecommendations, type RecommendationEntry } from '../userFeaturesApi';
-import { resolveMediaUrl } from '../api';
+import { markRecommendationRead, listRecommendations, type RecommendationEntry } from '../../../userFeaturesApi';
+import { resolveMediaUrl } from '../../../api';
 
 export function RecommendationsRail({userId,onOpen}:{userId:string;onOpen:(entry:RecommendationEntry)=>void}){
  const[entries,setEntries]=useState<RecommendationEntry[]>([]);

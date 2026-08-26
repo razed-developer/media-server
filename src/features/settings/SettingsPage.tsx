@@ -14,12 +14,12 @@ import {
   setActiveUserId,
   setIbroadcastClientId,
   setUserTheme,
-} from "../api";
+} from "../../api";
 import {
   activityEntries as loadActivityEntries,
   clearActivity,
-} from "../adminTools";
-import { listUserAvatars, setBuiltinUserAvatar, type UserAvatar } from "../userFeaturesApi";
+} from "../../adminTools";
+import { listUserAvatars, setBuiltinUserAvatar, type UserAvatar } from "../../userFeaturesApi";
 import type {
   ActivityEntry,
   MetadataProviderStatus,
@@ -28,25 +28,25 @@ import type {
   ContinueWatchingLayout,
   LibraryNavigationId,
   UserProfile,
-} from "../types";
-import { loadContinueWatchingLayout, loadLibraryOrder, saveContinueWatchingLayout, saveLibraryOrder } from "../preferences/navigationPreferences";
-import { LiveChannelsSettings } from "./LiveChannelsSettings";
-import { LibraryHealthSettings } from "../features/library-health/LibraryHealthSettings";
+} from "../../types";
+import { loadContinueWatchingLayout, loadLibraryOrder, saveContinueWatchingLayout, saveLibraryOrder } from "../../preferences/navigationPreferences";
+import { LiveChannelsSettings } from "../live/components/LiveChannelsSettings";
+import { LibraryHealthSettings } from "../library-health/LibraryHealthSettings";
 import { SubtitleSettings } from "./SubtitleSettings";
 import { WishlistView } from "./WishlistView";
-import { SettingsNavigation, type SettingsCategory } from "../features/settings/SettingsNavigation";
-import { ActivityConsole } from "../features/settings/ActivityConsole";
-import { CacheSettings } from "../features/settings/CacheSettings";
-import { BackupRestoreSettings } from "../features/settings/BackupRestoreSettings";
-import { MetadataSettings } from "../features/settings/MetadataSettings";
-import { UsersSettings } from "../features/settings/UsersSettings";
-import { AppearanceSettings } from "../features/settings/AppearanceSettings";
-import { GeneralSettings } from "../features/settings/GeneralSettings";
-import { MusicSettings } from "../features/settings/MusicSettings";
-import { RemoteAccessSettings } from "../features/settings/RemoteAccessSettings";
-import { LibrarySettings } from "../features/settings/LibrarySettings";
-import "../activityConsole.css";
-import "../funnelSettings.css";
+import { SettingsNavigation, type SettingsCategory } from "./SettingsNavigation";
+import { ActivityConsole } from "./ActivityConsole";
+import { CacheSettings } from "./CacheSettings";
+import { BackupRestoreSettings } from "./BackupRestoreSettings";
+import { MetadataSettings } from "./MetadataSettings";
+import { UsersSettings } from "./UsersSettings";
+import { AppearanceSettings } from "./AppearanceSettings";
+import { GeneralSettings } from "./GeneralSettings";
+import { MusicSettings } from "./MusicSettings";
+import { RemoteAccessSettings } from "./RemoteAccessSettings";
+import { LibrarySettings } from "./LibrarySettings";
+import "../../activityConsole.css";
+import "../../funnelSettings.css";
 
 export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
   const [category, setCategory] = useState<SettingsCategory>("general");

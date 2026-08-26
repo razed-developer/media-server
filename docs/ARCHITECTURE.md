@@ -5,11 +5,17 @@ platform communication so changes stay localized.
 
 ## Frontend structure
 
-- `src/App.tsx` owns application-wide state and route orchestration.
+- `src/App.tsx` is the composition root. It connects feature controllers to
+  route-level screens and should not implement domain workflows directly.
+- `src/app/hooks/` owns application bootstrap and other truly application-wide
+  lifecycle coordination.
 - `src/pages/` contains route-level screens. Pages compose features and shared
   components but should not contain platform API implementations.
-- `src/features/` contains focused workflows with their own UI and local state.
-  Current domains include collections, settings, setup, and library health.
+- `src/features/` contains focused workflows with their own UI, hooks, and
+  controllers. Current domains include collections, library, live channels,
+  metadata, music, playback, playlists, profiles, settings, sleep, and social.
+- Feature UI belongs in `src/features/<feature>/components/`; behavioural state
+  belongs in `src/features/<feature>/hooks/`.
 - `src/components/` contains reusable or application-wide UI that is not owned
   by a single route or feature.
 - `src/components/layout/` contains general layout primitives.
@@ -40,8 +46,12 @@ re-exported from `src/api.ts` when compatibility imports are useful.
 
 ## State boundaries
 
-- Keep cross-page state and navigation in `App.tsx`.
-- Keep workflow state beside the owning feature.
+- Keep only route selection and composition state in `App.tsx`.
+- Keep workflow state and mutations beside the owning feature in a hook or
+  controller. Do not add new playback, collection, playlist, profile, or
+  library derivation logic directly to `App.tsx`.
+- Derived library views belong in `useLibraryCatalog`; server bootstrap belongs
+  in `useAppData`; feature mutations belong in their named controllers.
 - Pass callbacks across feature boundaries instead of importing parent state.
 - Keep expensive filesystem and database work in Rust commands, outside React
   rendering.

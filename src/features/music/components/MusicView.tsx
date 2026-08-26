@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Disc3, ListMusic, Music2, RefreshCw, Search, UserRound, X } from 'lucide-react';
-import { fetchIbroadcastAudioBlob, getActiveUserId, ibroadcastStreamUrl } from '../api';
-import type { IbAlbum, IbArtist, IbLibrary, IbPlaylist, IbTrack } from '../types';
-import { getPreloadedMusicLibrary, preloadMusicLibrary, updatePreloadedMusicLibrary } from '../musicLibraryCache';
+import { fetchIbroadcastAudioBlob, getActiveUserId, ibroadcastStreamUrl } from '../../../api';
+import type { IbAlbum, IbArtist, IbLibrary, IbPlaylist, IbTrack } from '../../../types';
+import { getPreloadedMusicLibrary, preloadMusicLibrary, updatePreloadedMusicLibrary } from '../../../musicLibraryCache';
 import { IbroadcastConnect } from './IbroadcastConnect';
-import '../musicEnhancements.css';
+import '../../../musicEnhancements.css';
 
 type MusicMode='artists'|'albums'|'tracks'|'playlists';
 type CoverChoice={url:string;label:string};

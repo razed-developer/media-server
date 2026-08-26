@@ -1,6 +1,6 @@
 import { Camera, Frown, Ghost, Heart, Music2, Radio, Rocket, Smile, Trophy } from 'lucide-react';
-import { resolveMediaUrl } from '../api';
-import type { LiveChannel } from '../types';
+import { resolveMediaUrl } from '../../../api';
+import type { LiveChannel } from '../../../types';
 
 export const CHANNEL_ART_OPTIONS=[
   {id:'smile',label:'Comedy',Icon:Smile},{id:'frown',label:'Drama',Icon:Frown},{id:'camera',label:'Documentary',Icon:Camera},

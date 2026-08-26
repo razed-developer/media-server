@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { CloudRain, Frown, Heart, Laugh, MessageCircleHeart, Send, Sparkles, ThumbsUp } from 'lucide-react';
-import type { UserProfile } from '../types';
-import { getActiveUserId } from '../api';
-import { getReactions, sendRecommendation, setReaction, type ReactionEntry, type SocialTargetType } from '../userFeaturesApi';
-import { AvatarBadge } from './UserAvatarPicker';
+import type { UserProfile } from '../../../types';
+import { getActiveUserId } from '../../../api';
+import { getReactions, sendRecommendation, setReaction, type ReactionEntry, type SocialTargetType } from '../../../userFeaturesApi';
+import { AvatarBadge } from '../../../components/UserAvatarPicker';
 
 const choices=[
  {id:'loved',label:'Loved it',Icon:Heart},

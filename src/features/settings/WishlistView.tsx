@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Check, Film, Search, Tv, X } from 'lucide-react';
-import { getActiveUserId, serverBaseUrl } from '../api';
-import type { MetadataSearchResult, UserProfile } from '../types';
-import { addWishlistItem, listWishlist, searchWishlistTmdb, setWishlistStatus, type WishlistEntry } from '../userFeaturesApi';
-import '../wishlist.css';
+import { getActiveUserId, serverBaseUrl } from '../../api';
+import type { MetadataSearchResult, UserProfile } from '../../types';
+import { addWishlistItem, listWishlist, searchWishlistTmdb, setWishlistStatus, type WishlistEntry } from '../../userFeaturesApi';
+import '../../wishlist.css';
 
 const posterSrc=(url?:string)=>{if(!url)return undefined;try{const parsed=new URL(url);if(parsed.hostname==='image.tmdb.org'){const parts=parsed.pathname.split('/');const size=parts[3]||'w342';const path='/'+parts.slice(4).join('/');return `${serverBaseUrl()}/api/metadata/image/${size}/${encodeURIComponent(path)}`}}catch{}return url};
 

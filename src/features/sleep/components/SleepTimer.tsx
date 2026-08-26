@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Moon, Sunrise } from 'lucide-react';
-import { getSleepVideos, isTauriDesktop, resolveMediaUrl } from '../api';
-import type { SleepVideo } from '../types';
+import { getSleepVideos, isTauriDesktop, resolveMediaUrl } from '../../../api';
+import type { SleepVideo } from '../../../types';
 
 const STORAGE_KEY = 'onyx-sleep-until';
 const CHANGE_EVENT = 'onyx-sleep-timer-change';

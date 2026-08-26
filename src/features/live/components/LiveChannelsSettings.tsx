@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ArrowDown, ArrowUp, Check, Image, Pencil, Plus, Radio, Shuffle, Trash2, Upload, X } from 'lucide-react';
-import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, reorderLiveChannels, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork, setLiveChannelStyle } from '../api';
-import type { LiveChannel, LiveChannelCriteria, LiveChannelGenreScope, LiveChannelOrder, MediaItem, Playlist } from '../types';
+import { chooseLiveChannelArtwork, deleteLiveChannel, getActiveUserId, isTauriDesktop, listLiveChannels, listMedia, listPlaylists, reorderLiveChannels, resolveMediaUrl, saveLiveChannel, setLiveChannelArtwork, setLiveChannelStyle } from '../../../api';
+import type { LiveChannel, LiveChannelCriteria, LiveChannelGenreScope, LiveChannelOrder, MediaItem, Playlist } from '../../../types';
 import { CHANNEL_ART_OPTIONS, ChannelArtwork } from './ChannelArtwork';
 
 type ShowChoice={title:string;posterUrl?:string;episodeCount:number};

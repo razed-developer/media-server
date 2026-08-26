@@ -8,7 +8,7 @@ import {
 import { addLibraryRoot, removeLibraryRoot } from "../../libraryRootsApi";
 import { listCollectionSources } from "../../api";
 import type { CollectionSource, ContinueWatchingLayout, LibraryNavigationId, ScanProgress, ServerStatus } from "../../types";
-import { CollectionSourcesSettings } from "../../components/CollectionSourcesSettings";
+import { CollectionSourcesSettings } from "../collections/components/CollectionSourcesSettings";
 import { ContinueWatchingSettings } from "./ContinueWatchingSettings";
 import { LibraryRootCard, type LibraryKind } from "./LibraryRootCard";
 import { LibraryOrderSettings } from "./LibraryOrderSettings";

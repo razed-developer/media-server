@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Check, Cpu, FolderOpen, KeyRound, Save, Sparkles, Trash2 } from 'lucide-react';
-import { configureCaptions, generateMissingCaptions, getActiveUserId, getCaptionStatus } from '../api';
-import type { CaptionJob, CaptionStatus } from '../types';
-import { clearSubtitleProvider, getSubtitleProviderStatus, saveSubtitleProvider, testSubtitleProvider } from '../subtitleProviderApi';
+import { configureCaptions, generateMissingCaptions, getActiveUserId, getCaptionStatus } from '../../api';
+import type { CaptionJob, CaptionStatus } from '../../types';
+import { clearSubtitleProvider, getSubtitleProviderStatus, saveSubtitleProvider, testSubtitleProvider } from '../../subtitleProviderApi';
 
 const preferenceKey=()=>`onyx-subtitle-default:${getActiveUserId()}`;
 export function SubtitleSettings(){

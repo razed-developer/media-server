@@ -1,4 +1,4 @@
-import { IbroadcastConnect } from "../../components/IbroadcastConnect";
+import { IbroadcastConnect } from "../music/components/IbroadcastConnect";
 import { IbroadcastLogoKit } from "../../components/IbroadcastLogoKit";
 
 interface MusicSettingsProps {

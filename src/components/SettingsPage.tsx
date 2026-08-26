@@ -74,6 +74,8 @@ import { CollectionSourcesSettings } from "./CollectionSourcesSettings";
 import { SettingsNavigation, type SettingsCategory } from "../features/settings/SettingsNavigation";
 import { LibraryRootCard } from "../features/settings/LibraryRootCard";
 import { ContinueWatchingSettings } from "../features/settings/ContinueWatchingSettings";
+import { ActivityConsole } from "../features/settings/ActivityConsole";
+import { CacheSettings } from "../features/settings/CacheSettings";
 import "../activityConsole.css";
 import "../funnelSettings.css";
 
@@ -1017,69 +1019,25 @@ export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
         {category === "subtitles" && <SubtitleSettings />}
         {category === "live" && <LiveChannelsSettings />}
         {category === "cache" && (
-          <>
-            <p className="eyebrow">STORAGE</p>
-            <h1>Cache</h1>
-            <div className="settings-card">
-              <h3>Artwork and metadata</h3>
-              <p>
-                {Math.round((status?.artworkCacheBytes ?? 0) / 1024 / 1024)} MB
-                used
-              </p>
-              <button
-                onClick={async () => {
-                  await clearThumbnailCache();
-                  await refresh();
-                }}
-              >
-                Clear generated episode thumbnails
-              </button>
-            </div>
-          </>
+          <CacheSettings
+            artworkCacheBytes={status?.artworkCacheBytes ?? 0}
+            onClearThumbnails={() => {
+              void clearThumbnailCache().then(refresh).catch((cause) => {
+                setError(String(cause));
+              });
+            }}
+          />
         )}
         {category === "activity" && (
-          <>
-            <p className="eyebrow">DIAGNOSTICS</p>
-            <h1>Activity Console</h1>
-            <div className="activity-toolbar">
-              <span>{activity.length} recent events</span>
-              <div>
-                <button onClick={() => void refreshActivity()}>
-                  <RefreshCw size={16} />
-                  Refresh
-                </button>
-                <button
-                  onClick={async () => {
-                    await clearActivity();
-                    await refreshActivity();
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-            <div className="activity-console">
-              {activity.length === 0 ? (
-                <div className="activity-empty">No activity recorded yet.</div>
-              ) : (
-                activity.map((entry, index) => (
-                  <div
-                    className="activity-row"
-                    key={`${entry.timestamp}-${index}`}
-                  >
-                    <span className="activity-time">
-                      {new Date(entry.timestamp * 1000).toLocaleTimeString()}
-                    </span>
-                    <span className={`activity-level ${entry.level}`}>
-                      {entry.level}
-                    </span>
-                    <span className="activity-category">{entry.category}</span>
-                    <span className="activity-message">{entry.message}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </>
+          <ActivityConsole
+            entries={activity}
+            onRefresh={() => void refreshActivity()}
+            onClear={() => {
+              void clearActivity().then(refreshActivity).catch((cause) => {
+                setError(String(cause));
+              });
+            }}
+          />
         )}
       </section>
     </div>

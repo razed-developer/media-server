@@ -2,9 +2,9 @@ import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
-  ArrowLeft, BarChart3, Check, ChevronDown, EyeOff, Expand, Film, FolderOpen, History,
-  Home, KeyRound, Layers3, List, ListVideo, Lock, LogOut, Maximize2, Minus, Music2, Play,
-  Plus, Radio, Search, Settings, Subtitles, Tv, UserRound, X,
+  ArrowLeft, Check, ChevronDown, EyeOff, FolderOpen,
+  KeyRound, Layers3, List, ListVideo, Lock, LogOut,
+  Plus, Search, Subtitles, UserRound, X,
 } from 'lucide-react';
 import {
   addToPlaylist, createPlaylist, deletePlaylist, getActiveUserId, getAnalytics,
@@ -30,6 +30,8 @@ import { ProgressLine, WatchedBadge } from './components/media/MediaStatus';
 import { MetadataSummary } from './components/media/MetadataSummary';
 import { MediaCard } from './components/media/MediaCard';
 import { ShowCard } from './components/media/ShowCard';
+import { WindowBar } from './components/navigation/WindowBar';
+import { Sidebar } from './components/navigation/Sidebar';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -89,31 +91,6 @@ function CollectionRelockIndicator({ name, idleSince }: { name: string; idleSinc
   const remaining = Math.max(0, 30 * 60 - Math.floor((Date.now() - idleSince) / 1000));
   return <div className="collection-relock-indicator"><Lock size={14} /><span><strong>{name}</strong> relocks in {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</span></div>;
 }
-
-function WindowBar() {
-  const run = async (action: 'minimize' | 'maximize' | 'fullscreen' | 'close') => {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window');
-    const win = getCurrentWindow();
-    if (action === 'minimize') await win.minimize();
-    else if (action === 'maximize') await win.toggleMaximize();
-    else if (action === 'close') await win.close();
-    else {
-      const next = !(await win.isFullscreen());
-      await win.setFullscreen(next);
-      document.body.classList.toggle('app-fullscreen', next);
-    }
-  };
-  return <div className="window-bar" data-tauri-drag-region onDoubleClick={() => void run('maximize')}>
-    <div className="window-drag" data-tauri-drag-region>Onyx</div>
-    <div className="window-controls">
-      <button aria-label="Minimize" onClick={() => void run('minimize')}><Minus size={13} /></button>
-      <button aria-label="Maximize" onClick={() => void run('maximize')}><Maximize2 size={12} /></button>
-      <button aria-label="Fullscreen" onClick={() => void run('fullscreen')}><Expand size={12} /></button>
-      <button className="window-close" aria-label="Close" onClick={() => void run('close')}><X size={13} /></button>
-    </div>
-  </div>;
-}
-
 
 function App() {
   const isDesktop = isTauriDesktop();
@@ -305,22 +282,7 @@ function App() {
     }
   };
 
-  const sidebar = <aside className="sidebar">
-    <button className={section === 'home' ? 'active' : ''} onClick={() => navigate('home')}><Home size={19} />Home</button>
-    <button className={section === 'movies' ? 'active' : ''} onClick={() => navigate('movies')}><Film size={19} />Movies</button>
-    <button className={section === 'tv' ? 'active' : ''} onClick={() => navigate('tv')}><Tv size={19} />TV</button>
-    <button className={section === 'specials' ? 'active' : ''} onClick={() => navigate('specials')}><FolderOpen size={19} />Specials</button>
-    {collections.map(source => <button key={source.id} className={section === 'collection' && selectedCollectionId === source.id ? 'active' : ''} onClick={() => openCollection(source.id)} onContextMenu={event => { event.preventDefault(); void toggleCollectionLock(source); }} title={source.protected ? 'Right-click to lock or unlock' : undefined}>{source.protected ? <Lock size={19} /> : <FolderOpen size={19} />}{source.name}</button>)}
-    <button className={section === 'live' ? 'active' : ''} onClick={() => navigate('live')}><Radio size={19} />Live TV</button>
-    <button className={section === 'music' ? 'active' : ''} onClick={() => navigate('music')}><Music2 size={19} />Music</button>
-    <button className={section === 'history' ? 'active' : ''} onClick={() => navigate('history')} onContextMenu={event => { event.preventDefault(); void clearHistory(); }} title="Right-click to clear history"><History size={19} />History</button>
-    <button className={section === 'playlists' ? 'active' : ''} onClick={() => navigate('playlists')}><ListVideo size={19} />Playlists</button>
-    <button className={section === 'analytics' ? 'active' : ''} onClick={() => navigate('analytics')}><BarChart3 size={19} />Analytics</button>
-    <div className="sidebar-spacer" />
-    {pausedMedia && <button className="sidebar-resume" onClick={resumePaused} title={`Resume ${pausedMedia.title}`}><Play size={16} fill="currentColor" /><span><small>Resume</small>{pausedMedia.kind === 'episode' ? pausedMedia.showTitle ?? pausedMedia.title : pausedMedia.title}</span></button>}
-    <SleepTimer />
-    <button className={section === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}><Settings size={19} />Settings</button>
-  </aside>;
+  const sidebar = <Sidebar section={section} collections={collections} selectedCollectionId={selectedCollectionId} pausedMedia={pausedMedia} onNavigate={navigate} onOpenCollection={openCollection} onToggleCollectionLock={toggleCollectionLock} onClearHistory={clearHistory} onResume={resumePaused} />;
 
   const shell = projectorMode ? <div className="projector-shell">
     {error && <div className="error-banner">{error}</div>}

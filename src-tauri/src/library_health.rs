@@ -45,9 +45,9 @@ pub struct RepairReport {
 fn assess_item(database_path: &Path, item: &MediaItem) -> LibraryHealthItem {
     let mut issues: Vec<String> = Vec::new();
     if !Path::new(&item.path).is_file() { issues.push("Source file is missing".into()); }
-    let local_only = item.kind == "special" || item.kind == "collection";
+    let local_only = item.kind == "collection";
     if !local_only && item.provider_id.is_none() { issues.push("Not matched to TMDB".into()); }
-    if item.kind == "movie" && item.year.is_none() { issues.push("Release year is missing".into()); }
+    if (item.kind == "movie" || item.kind == "special") && item.year.is_none() { issues.push("Release year is missing".into()); }
     if item.kind == "episode" {
         if item.show_title.as_deref().map_or(true, str::is_empty) { issues.push("Show name is missing".into()); }
         if item.season.is_none() || item.episode.is_none() { issues.push("Season or episode number is missing".into()); }

@@ -62,7 +62,7 @@ pub fn run() {
     let phase=Instant::now();
     let initial_media = database::load_library(&database_path).unwrap_or_default();
     activity::info("Performance",format!("Startup library load: {} ms for {} items",phase.elapsed().as_millis(),initial_media.len()));
-    let metadata_media = initial_media.iter().filter(|item| item.kind != "special" && item.kind != "collection").cloned().collect::<Vec<_>>();
+    let metadata_media = initial_media.iter().filter(|item| item.kind != "collection").cloned().collect::<Vec<_>>();
     activity::info("Library", format!("Loaded {} media items from the library database", initial_media.len()));
     let shared = Arc::new(AppState {
         settings_path: settings_path.clone(), database_path, artwork_path, provider_path,

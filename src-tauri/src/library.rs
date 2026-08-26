@@ -47,7 +47,11 @@ pub fn scan(
             // for paths already in the library so ordinary scans only inspect new files.
             if previous.duration_seconds.is_some() && previous.container.is_some() {
                 let mut item = previous.clone();
-                if (item.kind == "special" || item.kind == "collection") && item.thumbnail_url.is_none() {
+                if item.kind == "special" {
+                    if item.poster_url.is_none() { item.poster_url = Some(format!("/art/{}/poster", item.id)); }
+                    if item.backdrop_url.is_none() { item.backdrop_url = Some(format!("/art/{}/backdrop", item.id)); }
+                    if item.thumbnail_url.is_none() { item.thumbnail_url = Some(format!("/art/{}/thumbnail", item.id)); }
+                } else if item.kind == "collection" && item.thumbnail_url.is_none() {
                     item.thumbnail_url = Some(format!("/art/{}/thumbnail", item.id));
                 }
                 media.push(item);
@@ -59,7 +63,7 @@ pub fn scan(
         let parsed = match kind_hint {
             Some("movie") => naming::parse_movie(path),
             Some("episode") => naming::parse_tv(path),
-            Some("special") => { let mut value = naming::parse_movie(path); value.kind = "special".into(); value.year = None; value },
+            Some("special") => { let mut value = naming::parse_movie(path); value.kind = "special".into(); value },
             Some("collection") => { let mut value=naming::parse_movie(path);value.kind="collection".into();value.year=None;value },
             _ => naming::parse(path),
         };
@@ -90,8 +94,8 @@ pub fn scan(
             episode_end: parsed.episode_end,
             path: path_text,
             stream_url: format!("/play/{id}"),
-            poster_url: (!is_special).then(|| format!("/art/{id}/poster")),
-            backdrop_url: (!is_special).then(|| format!("/art/{id}/backdrop")),
+            poster_url: (parsed.kind != "collection").then(|| format!("/art/{id}/poster")),
+            backdrop_url: (parsed.kind != "collection").then(|| format!("/art/{id}/backdrop")),
             thumbnail_url: (is_episode || is_special).then(|| format!("/art/{id}/thumbnail")),
             subtitles,
             progress_seconds: 0,

@@ -212,7 +212,7 @@ fn scan(state: &crate::app_state::AppState) -> Result<Vec<MediaItem>, String> {
         if let Ok(mut progress) = state.scan_progress.write() { progress.phase = "saving".into(); }
         let previous_ids = state.media.read().map_err(|_| "Media lock poisoned")?.iter().map(|item| item.id.clone()).collect::<HashSet<_>>();
         database::replace_library(&state.database_path, &media)?;
-        let metadata_media = media.iter().filter(|item| item.kind != "special"&&item.kind!="collection").cloned().collect::<Vec<_>>();
+        let metadata_media = media.iter().filter(|item| item.kind != "collection").cloned().collect::<Vec<_>>();
         metadata::reconcile_local_entities(&state.database_path, &metadata_media)?;
         *state.media.write().map_err(|_| "Media lock poisoned")? = media.clone();
         let new_ids = media.iter().filter(|item| !previous_ids.contains(&item.id)).map(|item| item.id.clone()).collect::<Vec<_>>();
@@ -540,8 +540,8 @@ pub async fn metadata_auto_match_all(state: TauriState<'_, Shared>) -> Result<u3
     let mut ids = Vec::new();
     let mut shows = HashSet::new();
     for item in media {
-        if item.kind == "movie" { ids.push(item.id); }
-        else if shows.insert(item.show_title.unwrap_or_default()) { ids.push(item.id); }
+        if item.kind == "movie" || item.kind == "special" { ids.push(item.id); }
+        else if item.kind == "episode" && shows.insert(item.show_title.unwrap_or_default()) { ids.push(item.id); }
     }
     let mut matched = 0;
     for id in ids {

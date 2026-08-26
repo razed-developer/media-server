@@ -26,6 +26,7 @@ import { SleepTimer } from './components/SleepTimer';
 import { AvatarBadge } from './components/UserAvatarPicker';
 import { useOnyxDialog } from './components/OnyxDialogProvider';
 import { Rail } from './components/media/Rail';
+import { ProgressLine, WatchedBadge } from './components/media/MediaStatus';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -110,12 +111,6 @@ function WindowBar() {
   </div>;
 }
 
-function ProgressLine({ value }: { value: number }) {
-  return <div className="mini-progress"><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>;
-}
-function WatchedBadge({ done }: { done: boolean }) {
-  return done ? <span className="watched-badge" title="Watched"><Check size={13} /></span> : null;
-}
 function MediaCard({ item, onPlay, onMenu, artwork = 'default' }: { item: MediaItem; onPlay: (item: MediaItem) => void; onMenu: (event: ReactMouseEvent, item: MediaItem) => void; artwork?: 'default' | 'poster' | 'thumbnail' }) {
   const landscape = artwork === 'thumbnail' || (artwork === 'default' && item.kind === 'episode');
   const image = artwork === 'poster' ? (item.posterUrl ?? item.thumbnailUrl) : artwork === 'thumbnail' ? (item.thumbnailUrl ?? item.posterUrl) : item.kind === 'episode' ? item.thumbnailUrl : item.posterUrl;

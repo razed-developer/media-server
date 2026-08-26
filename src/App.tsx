@@ -2,7 +2,7 @@ import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
-  ArrowLeft, Check, FolderOpen, Layers3, List, Lock,
+  FolderOpen, Lock,
   UserRound, X,
 } from 'lucide-react';
 import {
@@ -22,14 +22,9 @@ import { SettingsPage } from './components/SettingsPage';
 import { SocialBar } from './components/SocialBar';
 import { SleepTimer } from './components/SleepTimer';
 import { useOnyxDialog } from './components/OnyxDialogProvider';
-import { ProgressLine, WatchedBadge } from './components/media/MediaStatus';
-import { MetadataSummary } from './components/media/MetadataSummary';
-import { MediaCard } from './components/media/MediaCard';
-import { ShowCard } from './components/media/ShowCard';
 import { WindowBar } from './components/navigation/WindowBar';
 import { Sidebar } from './components/navigation/Sidebar';
 import { HomePage } from './pages/HomePage';
-import { PageHero } from './components/layout/PageHero';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { CollectionRelockIndicator, ProtectedCollectionGate } from './features/collections/CollectionAccess';
 import { TopBar } from './components/navigation/TopBar';
@@ -40,6 +35,7 @@ import { HiddenMediaPage } from './pages/HiddenMediaPage';
 import { PlayerPage } from './pages/PlayerPage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
 import { ContextMenu, type ContextMenuState, type MenuTarget, type TvShow } from './components/menus/ContextMenu';
+import { TelevisionPage } from './pages/TelevisionPage';
 
 const fallbackStatus: ServerStatus = {
   running: false,
@@ -282,8 +278,7 @@ function App() {
       {error && <div className="error-banner">{error}</div>}
       {section === 'home' && <HomePage activeUser={activeUser} isDesktop={isDesktop} splitContinueWatching={splitContinueWatching} continueItems={continueItems} continueMovies={continueMovies} continueEpisodes={continueEpisodes} recentShows={recentShows} recentMovies={recentMovies} onNavigate={navigate} onRecommendation={openRecommendation} onPlay={startPlayback} onItemMenu={(event, item) => openMenu(event, { type: 'item', item })} onOpenShow={show => { setSection('tv'); setSelectedShowTitle(show.title); }} onShowMenu={(event, show) => openMenu(event, { type: 'show', show })} />}
       {section === 'movies' && <MediaGalleryPage eyebrow="MOVIES" title="Movies" subtitle={`${movies.length} titles`} items={visibleMovies} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
-      {section === 'tv' && !selectedShow && <><PageHero eyebrow="TELEVISION" title="TV Shows" subtitle={`${shows.length} shows · ${episodes.length} episodes`} /><section className="gallery show-gallery">{visibleShows.map(show => <ShowCard key={show.title} show={show} onOpen={value => { setSelectedShowTitle(value.title); setQuery(''); }} onMenu={(e, v) => openMenu(e, { type: 'show', show: v })} />)}</section></>}
-      {section === 'tv' && selectedShow && <><section className="show-hero compact-hero" style={showBackdrop ? { backgroundImage: `linear-gradient(90deg,var(--bg) 0%,rgba(5,7,10,.80) 60%),url(${resolveMediaUrl(showBackdrop)})` } : undefined}><div><button className="back-button" onClick={() => { setSelectedShowTitle(null); setQuery(''); }}><ArrowLeft size={18} />All TV shows</button><p className="eyebrow">TV SHOW</p><h1>{selectedShow.title}</h1><p>{selectedShow.seasons} seasons · {selectedShow.episodes.length} episodes {allWatched(selectedShow.episodes) ? '· Watched' : ''}</p><MetadataSummary item={selectedShow.representative} />{isDesktop && <SocialBar targetType="show" targetKey={showSocialKey} title={selectedShow.title} posterUrl={selectedShow.representative.posterUrl} users={users} />}</div><div className="view-toggle"><button className={tvView === 'season' ? 'active' : ''} onClick={() => setTvView('season')}><Layers3 size={17} />By season</button><button className={tvView === 'list' ? 'active' : ''} onClick={() => setTvView('list')}><List size={17} />All episodes</button></div></section>{tvView === 'list' ? <section className="gallery episode-grid">{showEpisodes.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</section> : <div className="season-groups">{seasonGroups.map(group => <section className="season-section" key={group.season}><div className="season-heading" onContextMenu={e => openMenu(e, { type: 'season', showTitle: selectedShow.title, season: group.season, items: group.items })}><div><p>{selectedShow.title}</p><h2>{group.season === 0 ? 'Episodes' : `Season ${group.season}`} {allWatched(group.items) && <Check size={18} />}</h2><ProgressLine value={groupPercent(group.items)} /></div><span>{group.items.length} episodes</span></div><div className="gallery">{group.items.map(item => <MediaCard key={item.id} item={item} onPlay={startPlayback} onMenu={(e, v) => openMenu(e, { type: 'item', item: v })} />)}</div></section>)}</div>}</>}
+      {section === 'tv' && <TelevisionPage shows={visibleShows} totalShows={shows.length} totalEpisodes={episodes.length} selectedShow={selectedShow} showEpisodes={showEpisodes} seasonGroups={seasonGroups} backdropUrl={showBackdrop} view={tvView} social={isDesktop && selectedShow ? <SocialBar targetType="show" targetKey={showSocialKey} title={selectedShow.title} posterUrl={selectedShow.representative.posterUrl} users={users} /> : undefined} allWatched={allWatched} groupProgress={groupPercent} onOpenShow={show => { setSelectedShowTitle(show.title); setQuery(''); }} onShowMenu={(event, show) => openMenu(event, { type: 'show', show })} onBack={() => { setSelectedShowTitle(null); setQuery(''); }} onView={setTvView} onPlay={startPlayback} onItemMenu={(event, item) => openMenu(event, { type: 'item', item })} onSeasonMenu={(event, season, items) => selectedShow && openMenu(event, { type: 'season', showTitle: selectedShow.title, season, items })} />}
       {section === 'specials' && <SpecialsPage total={specials.length} groups={specialGroups} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}
       {section === 'collection' && selectedCollection && selectedCollection.protected && !collectionSessions[selectedCollection.id] && <ProtectedCollectionGate name={selectedCollection.name} onUnlock={unlockCollection} />}
       {section === 'collection' && selectedCollection && (!selectedCollection.protected || collectionSessions[selectedCollection.id]) && <CollectionPage name={selectedCollection.name} total={selectedCollection.items.length} groups={collectionGroups} onPlay={startPlayback} onMenu={(event, item) => openMenu(event, { type: 'item', item })} />}

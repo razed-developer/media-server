@@ -182,13 +182,14 @@ pub fn report(state: &crate::app_state::AppState) -> Result<LibraryHealthReport,
 }
 
 async fn repair_target(state: &crate::app_state::AppState, media_id: &str) -> Result<(String, bool), String> {
+    let special=state.media.read().ok().and_then(|items|items.iter().find(|item|item.id==media_id).map(|item|item.kind=="special")).unwrap_or(false);
     let entity = metadata::entity_for_media(&state.database_path, media_id)?.ok_or("Metadata entity is missing")?;
     let target = if entity.entity_type == "movie" { entity } else { metadata::series_for_media(&state.database_path, media_id)?.ok_or("Series metadata entity is missing")? };
     if let Some(existing) = metadata::provider_match(&state.database_path, &target.id, "tmdb")? {
         metadata::tmdb::apply_match(&state.database_path, media_id, &existing.provider_id, &existing.matched_by, existing.locked).await?;
         Ok((target.id, true))
     } else {
-        let matched = metadata::tmdb::auto_match(&state.database_path, media_id).await?;
+        let matched = if special { metadata::tmdb::auto_match_special(&state.database_path, media_id).await? } else { metadata::tmdb::auto_match(&state.database_path, media_id).await? };
         Ok((target.id, matched))
     }
 }

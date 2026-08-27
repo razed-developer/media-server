@@ -532,11 +532,20 @@ pub async fn metadata_search(id: String, query: Option<String>, state: TauriStat
     let search_query = query
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| if item.kind == "episode" { item.show_title.clone().unwrap_or(item.title.clone()) } else { item.title.clone() });
-    metadata::tmdb::search(if item.kind == "episode" { "series" } else { "movie" }, &search_query, None).await
+    let kinds = if item.kind == "special" { vec!["movie", "series"] } else if item.kind == "episode" { vec!["series"] } else { vec!["movie"] };
+    if let Some(results) = metadata::tmdb::lookup_reference(&search_query, &kinds).await? { return Ok(results); }
+    if item.kind == "special" {
+        let (movies, series) = tokio::join!(metadata::tmdb::search("movie", &search_query, None), metadata::tmdb::search("series", &search_query, None));
+        let mut results = movies?; results.extend(series?); return Ok(results);
+    }
+    metadata::tmdb::search(kinds[0], &search_query, None).await
 }
 #[tauri::command]
-pub async fn metadata_apply_match(id: String, provider_id: String, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
-    metadata::tmdb::apply_match(&state.database_path, &id, &provider_id, "manual", true).await?;
+pub async fn metadata_apply_match(id: String, provider_id: String, entity_type: String, state: TauriState<'_, Shared>) -> Result<Vec<MediaItem>, String> {
+    let item = state.media.read().map_err(|_| "Media lock poisoned")?.iter().find(|media| media.id == id).cloned().ok_or("Media item not found")?;
+    let allowed = match item.kind.as_str() { "special" => entity_type == "movie" || entity_type == "series", "episode" => entity_type == "series", _ => entity_type == "movie" };
+    if !allowed { return Err("That TMDB result type cannot be applied to this library item".into()); }
+    metadata::tmdb::apply_match_as(&state.database_path, &id, &provider_id, &entity_type, "manual", true).await?;
     enrich(&state, database::load_library_for_user(&state.database_path, database::DEFAULT_USER_ID, true)?)
 }
 #[tauri::command]
@@ -546,12 +555,13 @@ pub async fn metadata_auto_match_all(state: TauriState<'_, Shared>) -> Result<u3
     let mut ids = Vec::new();
     let mut shows = HashSet::new();
     for item in media {
-        if item.kind == "movie" || item.kind == "special" { ids.push(item.id); }
-        else if item.kind == "episode" && shows.insert(item.show_title.unwrap_or_default()) { ids.push(item.id); }
+        if item.kind == "movie" || item.kind == "special" { let special=item.kind=="special";ids.push((item.id,special)); }
+        else if item.kind == "episode" && shows.insert(item.show_title.unwrap_or_default()) { ids.push((item.id,false)); }
     }
     let mut matched = 0;
-    for id in ids {
-        if metadata::tmdb::auto_match(&state.database_path, &id).await.unwrap_or(false) { matched += 1; }
+    for (id,special) in ids {
+        let result=if special{metadata::tmdb::auto_match_special(&state.database_path,&id).await}else{metadata::tmdb::auto_match(&state.database_path,&id).await};
+        if result.unwrap_or(false) { matched += 1; }
     }
     Ok(matched)
 }

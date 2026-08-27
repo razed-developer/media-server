@@ -45,22 +45,37 @@ pub fn status() -> MetadataProviderStatus { MetadataProviderStatus { provider: "
 pub async fn test_connection() -> Result<(), String> { let result=get_json(&format!("{API}/configuration"),&[]).await.map(|_|()); if result.is_ok(){activity::info("Metadata","TMDB connection test succeeded");} result }
 fn year_from(date: Option<&str>) -> Option<u16> { date.and_then(|d| d.get(..4)).and_then(|y| y.parse().ok()) }
 fn image_url(path: Option<&str>, size: &str) -> Option<String> { path.filter(|p| !p.is_empty()).map(|p| format!("https://image.tmdb.org/t/p/{size}{p}")) }
+fn search_result(item:&Value,kind:&str)->MetadataSearchResult{let movie=kind=="movie";let title=item.get(if movie{"title"}else{"name"}).and_then(Value::as_str).unwrap_or("Untitled").to_string();let date=item.get(if movie{"release_date"}else{"first_air_date"}).and_then(Value::as_str);MetadataSearchResult{provider:"tmdb".into(),provider_id:item.get("id").and_then(Value::as_i64).unwrap_or_default().to_string(),entity_type:if movie{"movie".into()}else{"series".into()},title,year:year_from(date),overview:item.get("overview").and_then(Value::as_str).map(str::to_string),poster_url:image_url(item.get("poster_path").and_then(Value::as_str),"w342"),backdrop_url:image_url(item.get("backdrop_path").and_then(Value::as_str),"w780"),rating:item.get("vote_average").and_then(Value::as_f64)}}
 
 pub async fn search(kind:&str,query:&str,year:Option<u16>)->Result<Vec<MetadataSearchResult>,String>{
     let query=query.trim(); if query.is_empty(){return Ok(vec![])} let endpoint=if kind=="series"||kind=="episode"{"tv"}else{"movie"};
     activity::info("Metadata",format!("Searching TMDB {endpoint} for “{query}”{}",year.map(|y|format!(" ({y})")).unwrap_or_default()));
     let mut params=vec![("query",query.to_string()),("include_adult","false".into()),("language","en-US".into()),("page","1".into())]; if let Some(y)=year{params.push((if endpoint=="movie"{"primary_release_year"}else{"first_air_date_year"},y.to_string()));}
     let json=get_json(&format!("{API}/search/{endpoint}"),&params).await?; let mut out=vec![];
-    for item in json.get("results").and_then(Value::as_array).into_iter().flatten().take(20){let title=item.get(if endpoint=="movie"{"title"}else{"name"}).and_then(Value::as_str).unwrap_or("Untitled").to_string();let date=item.get(if endpoint=="movie"{"release_date"}else{"first_air_date"}).and_then(Value::as_str);out.push(MetadataSearchResult{provider:"tmdb".into(),provider_id:item.get("id").and_then(Value::as_i64).unwrap_or_default().to_string(),entity_type:if endpoint=="movie"{"movie".into()}else{"series".into()},title,year:year_from(date),overview:item.get("overview").and_then(Value::as_str).map(str::to_string),poster_url:image_url(item.get("poster_path").and_then(Value::as_str),"w342"),backdrop_url:image_url(item.get("backdrop_path").and_then(Value::as_str),"w780"),rating:item.get("vote_average").and_then(Value::as_f64)});}
+    for item in json.get("results").and_then(Value::as_array).into_iter().flatten().take(20){out.push(search_result(item,endpoint));}
     activity::info("Metadata",format!("TMDB returned {} matches for “{query}”",out.len())); Ok(out)
+}
+
+async fn lookup_tmdb(kind:&str,id:&str)->Result<MetadataSearchResult,String>{let endpoint=if kind=="series"||kind=="tv"{"tv"}else{"movie"};let json=get_json(&format!("{API}/{endpoint}/{id}"),&[("language","en-US".into())]).await?;Ok(search_result(&json,endpoint))}
+pub async fn lookup_reference(query:&str,kinds:&[&str])->Result<Option<Vec<MetadataSearchResult>>,String>{
+ let value=query.trim();let lower=value.to_ascii_lowercase();
+ if regex::Regex::new(r"^tt\d+$").unwrap().is_match(&lower){let json=get_json(&format!("{API}/find/{lower}"),&[("external_source","imdb_id".into()),("language","en-US".into())]).await?;let mut out=vec![];if kinds.contains(&"movie"){for item in json.get("movie_results").and_then(Value::as_array).into_iter().flatten(){out.push(search_result(item,"movie"));}}if kinds.contains(&"series"){for item in json.get("tv_results").and_then(Value::as_array).into_iter().flatten(){out.push(search_result(item,"tv"));}}return Ok(Some(out));}
+ let typed=regex::Regex::new(r"(?i)^(?:tmdb:)?(movie|tv|series):(\d+)$").unwrap().captures(value).map(|c|(if &c[1]=="movie"{"movie"}else{"series"},c[2].to_string()));
+ let url=regex::Regex::new(r"(?i)themoviedb\.org/(movie|tv)/(\d+)").unwrap().captures(value).map(|c|(if &c[1]=="movie"{"movie"}else{"series"},c[2].to_string()));
+ if let Some((kind,id))=typed.or(url){if !kinds.contains(&kind){return Err(format!("A TMDB {kind} cannot be used for this item"));}return Ok(Some(vec![lookup_tmdb(kind,&id).await?]));}
+ if value.len()>=5&&value.chars().all(|c|c.is_ascii_digit()){let mut out=vec![];for kind in kinds{if let Ok(result)=lookup_tmdb(kind,value).await{out.push(result)}}if out.is_empty(){return Err(format!("TMDB ID {value} was not found as an allowed movie or TV series"));}return Ok(Some(out));}
+ Ok(None)
 }
 
 fn genres(value:&Value)->Vec<String>{value.get("genres").and_then(Value::as_array).into_iter().flatten().filter_map(|g|g.get("name").and_then(Value::as_str).map(str::to_string)).collect()}
 fn detail_entity(base:&MetadataEntity,value:&Value,kind:&str)->MetadataEntity{let title=value.get(if kind=="movie"{"title"}else{"name"}).and_then(Value::as_str).unwrap_or(&base.title).to_string();let date=value.get(if kind=="movie"{"release_date"}else{"first_air_date"}).and_then(Value::as_str).map(str::to_string);MetadataEntity{id:base.id.clone(),entity_type:base.entity_type.clone(),parent_id:base.parent_id.clone(),title,original_title:value.get(if kind=="movie"{"original_title"}else{"original_name"}).and_then(Value::as_str).map(str::to_string),year:year_from(date.as_deref()).or(base.year),overview:value.get("overview").and_then(Value::as_str).filter(|s|!s.is_empty()).map(str::to_string),release_date:date,runtime_minutes:if kind=="movie"{value.get("runtime").and_then(Value::as_u64).map(|n|n as u32)}else{value.get("episode_run_time").and_then(Value::as_array).and_then(|a|a.first()).and_then(Value::as_u64).map(|n|n as u32)},season_number:base.season_number,episode_number:base.episode_number,genres:genres(value),rating:value.get("vote_average").and_then(Value::as_f64),poster_path:value.get("poster_path").and_then(Value::as_str).map(str::to_string),backdrop_path:value.get("backdrop_path").and_then(Value::as_str).map(str::to_string),still_path:base.still_path.clone(),metadata_json:value.clone()}}
 
 pub async fn apply_match(db:&Path,media_id:&str,provider_id:&str,matched_by:&str,locked:bool)->Result<(),String>{
-    let entity=entity_for_media(db,media_id)?.ok_or("No metadata entity exists for this media item")?; activity::info("Metadata",format!("Applying TMDB #{provider_id} to {} ({matched_by})",entity.title));
-    if entity.entity_type=="movie"{let detail=get_json(&format!("{API}/movie/{provider_id}"),&[("language","en-US".into()),("append_to_response","credits,images,keywords".into()),("include_image_language","en,null".into())]).await?;let updated=detail_entity(&entity,&detail,"movie");replace_entity_metadata(db,&updated)?;set_provider_match(db,&ProviderMatch{entity_id:entity.id,provider:"tmdb".into(),provider_id:provider_id.into(),matched_by:matched_by.into(),confidence:None,locked})?;activity::info("Metadata",format!("Matched movie “{}” to TMDB #{provider_id}",updated.title));return Ok(())}
+    let entity=entity_for_media(db,media_id)?.ok_or("No metadata entity exists for this media item")?;let kind=if entity.entity_type!="movie"||entity.metadata_json.get("name").is_some(){"series"}else{"movie"};apply_match_as(db,media_id,provider_id,kind,matched_by,locked).await
+}
+pub async fn apply_match_as(db:&Path,media_id:&str,provider_id:&str,source_kind:&str,matched_by:&str,locked:bool)->Result<(),String>{
+    let entity=entity_for_media(db,media_id)?.ok_or("No metadata entity exists for this media item")?; activity::info("Metadata",format!("Applying TMDB {source_kind} #{provider_id} to {} ({matched_by})",entity.title));
+    if entity.entity_type=="movie"{let endpoint=if source_kind=="series"{"tv"}else{"movie"};let detail=get_json(&format!("{API}/{endpoint}/{provider_id}"),&[("language","en-US".into()),("append_to_response","credits,images,keywords".into()),("include_image_language","en,null".into())]).await?;let updated=detail_entity(&entity,&detail,if source_kind=="series"{"series"}else{"movie"});replace_entity_metadata(db,&updated)?;set_provider_match(db,&ProviderMatch{entity_id:entity.id,provider:"tmdb".into(),provider_id:provider_id.into(),matched_by:matched_by.into(),confidence:None,locked})?;activity::info("Metadata",format!("Matched local item “{}” to TMDB {source_kind} #{provider_id}",updated.title));return Ok(())}
     let series=series_for_media(db,media_id)?.ok_or("TV series entity not found")?;let detail=get_json(&format!("{API}/tv/{provider_id}"),&[("language","en-US".into()),("append_to_response","credits,images,keywords".into()),("include_image_language","en,null".into())]).await?;let updated=detail_entity(&series,&detail,"series");replace_entity_metadata(db,&updated)?;set_provider_match(db,&ProviderMatch{entity_id:series.id.clone(),provider:"tmdb".into(),provider_id:provider_id.into(),matched_by:matched_by.into(),confidence:None,locked})?;hydrate_series_children(db,&series.id,provider_id).await?;activity::info("Metadata",format!("Matched series “{}” to TMDB #{provider_id}",updated.title));Ok(())
 }
 
@@ -90,4 +105,13 @@ pub async fn auto_match(db:&Path,media_id:&str)->Result<bool,String>{
  let updated=if target.entity_type=="movie"{entity_for_media(db,media_id)?.unwrap()}else{series_for_media(db,media_id)?.unwrap()};
  set_provider_match(db,&ProviderMatch{entity_id:updated.id,provider:"tmdb".into(),provider_id:best.0.provider_id,matched_by:"automatic".into(),confidence:Some(best.1),locked:false})?;
  Ok(true)
+}
+pub async fn auto_match_special(db:&Path,media_id:&str)->Result<bool,String>{
+ let entity=entity_for_media(db,media_id)?.ok_or("Metadata entity missing")?;
+ if provider_match(db,&entity.id,"tmdb")?.is_some(){return Ok(false)}
+ let (movies,series)=tokio::join!(search("movie",&entity.title,entity.year),search("series",&entity.title,entity.year));let mut results=movies?;results.extend(series?);
+ let Some(best)=results.into_iter().map(|result|{let score=confidence(&entity.title,entity.year,&result);(result,score)}).max_by(|a,b|a.1.total_cmp(&b.1))else{return Ok(false)};
+ if best.1<0.90{return Ok(false)}
+ apply_match_as(db,media_id,&best.0.provider_id,&best.0.entity_type,"automatic",false).await?;
+ set_provider_match(db,&ProviderMatch{entity_id:entity.id,provider:"tmdb".into(),provider_id:best.0.provider_id,matched_by:"automatic".into(),confidence:Some(best.1),locked:false})?;Ok(true)
 }

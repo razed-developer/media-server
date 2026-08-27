@@ -88,10 +88,11 @@ export async function searchMetadata(
 export async function applyMetadataMatch(
   id: string,
   providerId: string,
+  entityType: "movie" | "series",
 ): Promise<MediaItem[]> {
   if (!isTauriDesktop())
     throw new Error("Metadata matching is managed from the desktop server.");
-  await invoke<MediaItem[]>("metadata_apply_match", { id, providerId });
+  await invoke<MediaItem[]>("metadata_apply_match", { id, providerId, entityType });
   return listMedia();
 }
 

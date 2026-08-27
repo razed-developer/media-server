@@ -1,4 +1,4 @@
-use crate::{activity, database, live_channels, metadata, metadata_view, models::MediaItem, Shared};
+use crate::{activity, database, live_channels, metadata, models::MediaItem, Shared};
 use axum::{
     body::Body,
     extract::{Path as AxumPath, Query, State},
@@ -20,17 +20,21 @@ fn request_user(state: &crate::AppState, headers: &HeaderMap) -> String {
 fn enriched_media(state: &crate::AppState, user_id: &str) -> Result<Vec<MediaItem>, String> {
     let mut items = database::load_library_for_user(&state.database_path, user_id, false)?;
     metadata::enrich_media(&state.database_path, &mut items)?;
-    metadata_view::canonicalize(&state.database_path, &mut items)?;
     Ok(items)
 }
 
 async fn guide(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<Vec<live_channels::GuideChannel>>, (StatusCode, String)> {
     let user = request_user(&state, &headers);
-    let media = enriched_media(&state, &user).map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
-    let playlists = database::list_playlists(&state.database_path, &user).map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
-    live_channels::guide(&state.provider_path, &user, &media, &playlists, None)
-        .map(Json)
-        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))
+    let task_state=state.clone();
+    tokio::task::spawn_blocking(move||{
+        let media=enriched_media(&task_state,&user)?;
+        let playlists=database::list_playlists(&task_state.database_path,&user)?;
+        live_channels::guide(&task_state.provider_path,&user,&media,&playlists,None)
+    })
+    .await
+    .map_err(|error|(StatusCode::INTERNAL_SERVER_ERROR,error.to_string()))?
+    .map(Json)
+    .map_err(|error|(StatusCode::INTERNAL_SERVER_ERROR,error))
 }
 
 async fn artwork(State(state): State<Shared>, AxumPath(channel_id): AxumPath<String>) -> Response {

@@ -1,5 +1,5 @@
 use crate::{
-    artwork, database, ibroadcast, metadata, metadata_view,
+    artwork, database, ibroadcast, metadata,
     models::{EnrichedAnalyticsSummary, MediaItem, Playlist, UserPreferences, UserProfile},
     Shared,
 };
@@ -91,12 +91,17 @@ async fn logout(State(state): State<Shared>, headers: HeaderMap) -> Response {
 fn enriched_library(state: &crate::AppState, user: &str, include_hidden: bool) -> Result<Vec<MediaItem>, String> {
     let mut items = database::load_library_for_user(&state.database_path, user, include_hidden)?;
     metadata::enrich_media(&state.database_path, &mut items)?;
-    metadata_view::canonicalize(&state.database_path, &mut items)?;
     Ok(items)
 }
 async fn api_users(State(state): State<Shared>) -> Result<Json<Vec<UserProfile>>, StatusCode> { database::list_users(&state.database_path).map(Json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR) }
 async fn api_library(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<Vec<MediaItem>>, StatusCode> {
-    enriched_library(&state, &request_user(&state, &headers), false).map(Json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    let user=request_user(&state,&headers);
+    let task_state=state.clone();
+    let items=tokio::task::spawn_blocking(move||enriched_library(&task_state,&user,false))
+        .await
+        .map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(items))
 }
 async fn api_preferences(State(state): State<Shared>, headers: HeaderMap) -> Result<Json<UserPreferences>, StatusCode> {
     database::get_preferences(&state.database_path, &request_user(&state, &headers)).map(Json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)

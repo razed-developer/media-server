@@ -1,5 +1,5 @@
 use crate::{
-    app_state::{persist_settings, ScanProgress}, artwork, database, ibroadcast, library, metadata, metadata_view,
+    app_state::{persist_settings, ScanProgress}, artwork, database, ibroadcast, library, metadata,
     models::{EnrichedAnalyticsSummary, MediaItem, MetadataProviderStatus, MetadataSearchResult, Playlist, UserPreferences, UserProfile},
     Shared, FUNNEL_GATEWAY_PORT, PORT,
 };
@@ -141,7 +141,6 @@ fn ensure_user(state: &crate::app_state::AppState, user_id: &str) -> Result<(), 
 
 fn enrich(state: &crate::app_state::AppState, mut items: Vec<MediaItem>) -> Result<Vec<MediaItem>, String> {
     metadata::enrich_media(&state.database_path, &mut items)?;
-    metadata_view::canonicalize(&state.database_path, &mut items)?;
     Ok(items)
 }
 

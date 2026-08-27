@@ -136,7 +136,6 @@ function App() {
     if (ids.length && window.confirm("Clear all watch history for this profile?")) await mediaActions.resetWatched(ids);
   };
   const scanOneLibrary = async (kind: "movie" | "tv" | "special" | `collection:${string}`, label: string) => {
-    if (!window.confirm(`Scan ${label} for new or changed media?`)) return;
     try { data.setError(`Scanning ${label}…`); await rescanLibraryKind(kind); await data.refresh(); data.setError(null); }
     catch (cause) { data.setError(String(cause)); }
   };
@@ -170,7 +169,7 @@ function App() {
       {section === "history" && <MediaGalleryPage eyebrow="HISTORY" title="Recently watched" subtitle={`${catalog.historyItems.length} items`} items={catalog.visibleHistory} onPlay={playback.startPlayback} onMenu={(event, item) => openMenu(event, { type: "item", item })}/>}
       {section === "playlists" && <PlaylistsPage playlists={data.playlists} selected={catalog.selectedPlaylist} selectedItems={catalog.playlistItems} library={data.items} onCreate={() => void playlistActions.create()} onOpen={playlist => setSelectedPlaylistId(playlist.id)} onBack={() => setSelectedPlaylistId(null)} onPlay={playback.startPlayback} onItemMenu={(event, item) => openMenu(event, { type: "item", item })} onPlaylistMenu={(event, playlist) => openMenu(event, { type: "playlist", playlist })}/>}
       {section === "analytics" && <AnalyticsPage analytics={data.analytics}/>}
-      {section === "settings" && <SettingsPage onChanged={() => void data.refresh()}/>}
+      {section === "settings" && <SettingsPage onChanged={data.refresh}/>}
       {section === "hidden" && <HiddenMediaPage movies={catalog.hiddenMovies} shows={catalog.hiddenShows} onPlay={playback.startPlayback} onMovieMenu={(event, item) => openMenu(event, { type: "item", item }, true)} onShowMenu={(event, show) => openMenu(event, { type: "show", show }, true)}/>}
     </main>}
     {contextMenu && <ContextMenu menu={contextMenu} isDesktop={isDesktop} playlists={data.playlists} selectedPlaylist={catalog.selectedPlaylist} onClose={() => setContextMenu(null)} onPlay={playback.startPlayback} onOpenShow={show => { setSection("tv"); setSelectedShowTitle(show.title); }} onReset={ids => void mediaActions.resetWatched(ids)} onAdd={(id, ids) => void playlistActions.addItems(id, ids)} onCreate={ids => void playlistActions.create(ids)} onFixMatch={item => setMatchItem(item)} onEditLocal={item => void mediaActions.editItem(item)} onResetLocal={item => void mediaActions.resetIdentificationFor(item)} onFixShowMatch={show => setMatchItem(show.representative)} onEditLocalShow={show => void mediaActions.editShow(show)} onHideItem={(item, hidden) => void mediaActions.hideItem(item, hidden)} onHideShow={(show, hidden) => void mediaActions.hideShow(show, hidden)} onRemovePlaylistItem={(id, mediaId) => void playlistActions.removeItem(id, mediaId)} onOpenPlaylist={playlist => { setSection("playlists"); setSelectedPlaylistId(playlist.id); }} onDeletePlaylist={playlist => void playlistActions.remove(playlist)}/>}

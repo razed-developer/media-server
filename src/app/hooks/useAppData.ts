@@ -60,23 +60,23 @@ export function useAppData(isDesktop: boolean) {
   const refresh = useCallback(async () => {
     const started = performance.now();
     window.dispatchEvent(new CustomEvent("onyx-startup-status", { detail: { message: "Loading shows…" } }));
-    const [library, serverStatus, prefs] = await Promise.all([listMedia(), getServerStatus(), getUserPreferences()]);
+    const [library, prefs] = await Promise.all([listMedia(), getUserPreferences()]);
     setItems(library);
-    setStatus(serverStatus);
+    setStatus(current => ({ ...current, running: true, itemCount: library.length, localUrl: isDesktop ? current.localUrl : window.location.origin }));
     document.documentElement.dataset.theme = prefs.theme;
     setContinueWatchingLayout(loadContinueWatchingLayout(getActiveUserId(), prefs.splitContinueWatching));
     setLibraryOrder(loadLibraryOrder(getActiveUserId()));
     setError(null);
-    const optional = await Promise.allSettled([listPlaylists(), getAnalytics(), listUsers(), listUserAvatars()] as const);
+    const optional = await Promise.allSettled([listPlaylists(), getAnalytics(), listUserAvatars()] as const);
     const playlistData = optional[0].status === "fulfilled" ? optional[0].value : [];
     setPlaylists(playlistData);
     if (optional[1].status === "fulfilled") setAnalytics(optional[1].value);
-    if (optional[2].status === "fulfilled") setUsers(optional[2].value);
-    if (optional[3].status === "fulfilled") setAvatars(Object.fromEntries(optional[3].value.map(avatar => [avatar.userId, avatar])));
+    if (optional[2].status === "fulfilled") setAvatars(Object.fromEntries(optional[2].value.map(avatar => [avatar.userId, avatar])));
     cacheLiveCriteria(library, playlistData);
     window.dispatchEvent(new CustomEvent("onyx-startup-status", { detail: { message: "Preparing your library…" } }));
     const elapsed = Math.round(performance.now() - started);
     if (isDesktop) void invoke("record_client_activity", { level: elapsed > 1000 ? "warning" : "info", category: "Performance", message: `Initial UI data load completed in ${elapsed} ms for ${library.length} media items` }).catch(() => undefined);
+    void getServerStatus().then(setStatus).catch(() => undefined);
   }, [isDesktop]);
 
   useEffect(() => {

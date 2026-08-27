@@ -48,7 +48,7 @@ import { LibrarySettings } from "./LibrarySettings";
 import "../../activityConsole.css";
 import "../../funnelSettings.css";
 
-export function SettingsPage({ onChanged }: { onChanged?: () => void }) {
+export function SettingsPage({ onChanged }: { onChanged?: () => void | Promise<void> }) {
   const [category, setCategory] = useState<SettingsCategory>("general");
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);

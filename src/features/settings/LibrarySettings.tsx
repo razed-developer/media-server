@@ -21,7 +21,7 @@ interface LibrarySettingsProps {
   onContinueWatchingLayoutChange: (layout: ContinueWatchingLayout) => void;
   onLibraryOrderChange: (order: LibraryNavigationId[]) => void;
   onRefresh: () => Promise<void>;
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<void>;
   onError: (message: string) => void;
 }
 

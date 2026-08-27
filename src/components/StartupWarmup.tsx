@@ -29,9 +29,9 @@ export function StartupWarmup({children}:{children:React.ReactNode}){
     else if(!profile||!profile.textContent?.trim()||/^user\b/i.test(profile.textContent.trim())){setMessage('Loading your profile…')}
     else if(!server){setMessage('Connecting to your media server…')}
     else {
-      setMessage('Preparing Live Channels…');
-      try{const channels=await listLiveChannels();if(channels.length){const guide=await getLiveChannelGuide();localStorage.setItem(`onyx-live-guide:${getActiveUserId()}`,JSON.stringify(guide))}}catch{/* Live Channels remains optional if no channels are configured. */}
-      window.clearTimeout(timeout);finish();return;
+      window.clearTimeout(timeout);finish();
+      void listLiveChannels().then(async channels=>{if(channels.length){const guide=await getLiveChannelGuide();localStorage.setItem(`onyx-live-guide:${getActiveUserId()}`,JSON.stringify(guide))}}).catch(()=>{/* Live Channels remains optional if no channels are configured. */});
+      return;
     }
     await new Promise(resolve=>window.setTimeout(resolve,100));
    }

@@ -62,6 +62,7 @@ export function useAppData(isDesktop: boolean) {
     window.dispatchEvent(new CustomEvent("onyx-startup-status", { detail: { message: "Loading shows…" } }));
     const [library, prefs] = await Promise.all([listMedia(), getUserPreferences()]);
     setItems(library);
+    window.dispatchEvent(new CustomEvent("onyx-media-library", { detail: { items: library } }));
     setStatus(current => ({ ...current, running: true, itemCount: library.length, localUrl: isDesktop ? current.localUrl : window.location.origin }));
     document.documentElement.dataset.theme = prefs.theme;
     setContinueWatchingLayout(loadContinueWatchingLayout(getActiveUserId(), prefs.splitContinueWatching));

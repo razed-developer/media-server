@@ -21,6 +21,7 @@ mod metadata_view;
 mod models;
 mod naming;
 mod probe;
+mod remote_server;
 mod server;
 mod subtitles;
 mod user_features;
@@ -33,6 +34,7 @@ use tauri::{path::BaseDirectory, Manager};
 pub use app_state::Shared;
 pub const PORT: u16 = 8765;
 pub const FUNNEL_GATEWAY_PORT: u16 = 8766;
+pub const REMOTE_PORT: u16 = 8767;
 
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
@@ -84,6 +86,8 @@ pub fn run() {
             let web_root = if cfg!(debug_assertions) { None } else { app.path().resolve("web", BaseDirectory::Resource).ok() };
             activity::info("Server", format!("Starting browser server on port {PORT}"));
             tauri::async_runtime::spawn(async move { server::start(server_state, PORT, FUNNEL_GATEWAY_PORT, web_root).await; });
+            activity::info("Server", format!("Starting phone remote service on port {REMOTE_PORT}"));
+            tauri::async_runtime::spawn(async move { remote_server::start(REMOTE_PORT).await; });
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let _=tauri::async_runtime::spawn_blocking(move || {

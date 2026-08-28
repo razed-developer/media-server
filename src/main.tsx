@@ -14,6 +14,9 @@ import { PlayerSubtitleSearch } from './components/PlayerSubtitleSearch';
 import { QuickLibraryRefresh } from './components/QuickLibraryRefresh';
 import { SetupGate } from './components/SetupGate';
 import { StartupWarmup } from './components/StartupWarmup';
+import { ProjectorRemoteBridge } from './features/remote/ProjectorRemoteBridge';
+import { RemotePage, isPhoneRemoteRoute } from './features/remote/RemotePage';
+import { projectorProfileSlug } from './utils/routes';
 import { installRemoteNavigation } from './remoteNavigation';
 import { installScrollEnhancements } from './scrollEnhancements';
 import './styles.css';
@@ -36,11 +39,14 @@ import './startupWarmup.css';
 import './continuityPolish.css';
 import './socialDiscovery.css';
 import './sleepTimer.css';
+import './phoneRemote.css';
 
+const phoneRemote=isPhoneRemoteRoute();
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <OnyxDialogProvider>
+    {phoneRemote?<RemotePage/>:<OnyxDialogProvider>
       <SetupGate><StartupWarmup><App /></StartupWarmup></SetupGate>
+      {projectorProfileSlug()&&<ProjectorRemoteBridge/>}
       <BrandingEnhancer />
       <CaptionStatusBridge />
       <QuickLibraryRefresh />
@@ -51,9 +57,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <GlobalMediaSearch />
       <HouseholdActivityFeed />
       <PerformanceMonitor />
-    </OnyxDialogProvider>
+    </OnyxDialogProvider>}
   </React.StrictMode>,
 );
 
-installRemoteNavigation();
-installScrollEnhancements();
+if(!phoneRemote){installRemoteNavigation();installScrollEnhancements();}
